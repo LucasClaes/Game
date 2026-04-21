@@ -1,0 +1,39 @@
+{
+  "upgrades": [
+    {
+      "id": "damage",
+      "name": "Sharper Blade",
+      "description": "Increases melee and bullet damage by 20% per level",
+      "max_level": 5,
+      "costs": [50, 100, 175, 275, 400]
+    },
+    {
+      "id": "fire_rate",
+      "name": "Swift Strikes",
+      "description": "Reduces attack cooldown by 15-20% per level",
+      "max_level": 5,
+      "costs": [50, 100, 175, 275, 400]
+    },
+    {
+      "id": "speed",
+      "name": "Running Shoes",
+      "description": "Increases movement speed by 10% per level",
+      "max_level": 5,
+      "costs": [40, 80, 140, 220, 320]
+    },
+    {
+      "id": "health",
+      "name": "Extra Life",
+      "description": "Gain one extra life (starts with 3)",
+      "max_level": 3,
+      "costs": [75, 150, 250]
+    },
+    {
+      "id": "ranged_unlock",
+      "name": "Slingshot",
+      "description": "Unlocks ranged combat. Right-click to fire projectiles.",
+      "max_level": 1,
+      "costs": [200]
+    }
+  ]
+}
