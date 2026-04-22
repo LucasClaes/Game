@@ -8,7 +8,15 @@
       "Bash(python -m pygbag --version)",
       "Bash(python -m pygbag main.py)",
       "Bash(echo \"PID: $!\")",
-      "Bash(pkill -f \"pygbag\")"
+      "Bash(pkill -f \"pygbag\")",
+      "WebSearch",
+      "Bash(claude plugin *)",
+      "Bash(npm install *)",
+      "Bash(codeburn *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
-  }
+  },
+  "outputStyle": "default"
 }
