@@ -4,7 +4,7 @@ import pygame
 from core.settings import SCREEN_W, SCREEN_H, WHITE, YELLOW, DARK_GRAY, GREEN, BLUE, GRAY, RED
 
 
-_SHOP_PATH = "data/shop.json"
+_SHOP_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "shop.json")
 
 
 class ShopScreen:

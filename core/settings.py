@@ -16,9 +16,9 @@ BULLET_DAMAGE_BASE = 15
 MELEE_DAMAGE_BASE = 25
 
 ZOMBIE_TYPES = {
-    "basic": {"hp": 2, "speed": 90, "damage": 1, "coin_drop": 5},
-    "fast":  {"hp": 1, "speed": 160, "damage": 1, "coin_drop": 8},
-    "tank":  {"hp": 5, "speed": 55,  "damage": 2, "coin_drop": 15},
+    "basic": {"hp": 60,  "speed": 90,  "damage": 1, "coin_drop": 5},
+    "fast":  {"hp": 40,  "speed": 160, "damage": 1, "coin_drop": 8},
+    "tank":  {"hp": 150, "speed": 55,  "damage": 2, "coin_drop": 15},
 }
 
 # Colors

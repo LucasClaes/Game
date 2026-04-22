@@ -1,11 +1,12 @@
 import json
 import math
+import os
 import pygame
 from core.settings import TILE_SIZE
 from entities.coin import Coin
 from entities.zombie import Zombie
 
-_LEVELS_PATH = "data/levels.json"
+_LEVELS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "levels.json")
 
 # ── palette ──────────────────────────────────────────────────────────────────
 _FLOOR_BASE   = (30,  32,  44)

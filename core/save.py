@@ -2,7 +2,7 @@ import json
 import sys
 import os
 
-_SAVE_PATH = "data/save.json"
+_SAVE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "save.json")
 
 _DEFAULT = {
     "coins": 0,
