@@ -4,6 +4,7 @@ from entities.player import Player
 from world.level import Level
 from systems.camera import Camera
 from ui.hud import HUD
+from ui.minimap import Minimap
 
 
 class PlayingScreen:
@@ -19,6 +20,7 @@ class PlayingScreen:
         self._player_data = None
         self._coins_earned_this_run = 0
         self._hud = HUD(font, big_font)
+        self._minimap = Minimap()
         self._paused = False
         self._complete_delay = 0.0  # brief pause before switching on level complete
 
@@ -26,14 +28,10 @@ class PlayingScreen:
         self._player_data = kwargs.get("player_data")
         level_index = self._player_data.get("current_level", 0)
 
-        try:
+        if level_index < Level.level_count():
             self._level = Level.from_json(level_index)
-        except (IndexError, KeyError):
-            # No more levels — back to menu, reset progress
-            self._player_data["current_level"] = 0
-            from core.state_machine import GameState
-            self._sm.switch_to(GameState.MAIN_MENU, player_data=self._player_data)
-            return
+        else:
+            self._level = Level.generate(level_index)
 
         self._player = Player(
             self._level.player_start[0],
@@ -159,6 +157,7 @@ class PlayingScreen:
 
         self._player.draw(surface, self._camera.offset)
         self._hud.draw(surface, self._player, self._level, len(self._level.coins))
+        self._minimap.draw(surface, self._level, self._player, self._level.zombies)
 
         if self._paused:
             self._draw_pause(surface)

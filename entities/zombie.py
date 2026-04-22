@@ -43,6 +43,7 @@ class Zombie:
         self._hit_flash = max(0.0, self._hit_flash - dt)
         self._invincible = max(0.0, self._invincible - dt)
         self._anim += dt
+        self._depenetrate(walls)
 
         self._path_timer -= dt
         if tile_grid is not None and (self._path_timer <= 0 or not self._path):
@@ -65,6 +66,27 @@ class Zombie:
             self._move_toward(player_pos, dt, walls)
 
         self.rect.center = (int(self.pos.x), int(self.pos.y))
+
+    def _depenetrate(self, walls: list):
+        for wall in walls:
+            if not self.rect.colliderect(wall):
+                continue
+            ox_left  = self.rect.right  - wall.left
+            ox_right = wall.right  - self.rect.left
+            oy_top   = self.rect.bottom - wall.top
+            oy_bot   = wall.bottom - self.rect.top
+            min_push = min(ox_left, ox_right, oy_top, oy_bot)
+            if min_push <= 0:
+                continue
+            if min_push == ox_left:
+                self.pos.x -= ox_left
+            elif min_push == ox_right:
+                self.pos.x += ox_right
+            elif min_push == oy_top:
+                self.pos.y -= oy_top
+            else:
+                self.pos.y += oy_bot
+            self.rect.center = (int(self.pos.x), int(self.pos.y))
 
     def _move_toward(self, target: pygame.Vector2, dt: float, walls: list):
         diff = target - self.pos

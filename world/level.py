@@ -82,7 +82,15 @@ class Level:
     def from_json(cls, level_index: int) -> "Level":
         with open(_LEVELS_PATH) as f:
             data = json.load(f)
-        raw = data["levels"][level_index]
+        return cls._from_dict(data["levels"][level_index], level_index)
+
+    @classmethod
+    def generate(cls, level_num: int) -> "Level":
+        from world.procgen import generate as _gen
+        return cls._from_dict(_gen(level_num), level_num)
+
+    @classmethod
+    def _from_dict(cls, raw: dict, level_index: int = 0) -> "Level":
         level = cls()
         level.number = raw.get("id", level_index)
         level.name = raw.get("name", f"Level {level_index + 1}")

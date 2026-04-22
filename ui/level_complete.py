@@ -41,17 +41,11 @@ class LevelCompleteScreen:
 
     def _activate(self, index):
         from core.state_machine import GameState
-        from world.level import Level
         label = self._buttons[index]
         next_level = self._level_num + 1
+        self._player_data["current_level"] = next_level
         if label == "CONTINUE":
-            if next_level < Level.level_count():
-                self._player_data["current_level"] = next_level
-                self._sm.switch_to(GameState.PLAYING, player_data=self._player_data)
-            else:
-                # All levels done — back to menu
-                self._player_data["current_level"] = 0
-                self._sm.switch_to(GameState.MAIN_MENU, player_data=self._player_data)
+            self._sm.switch_to(GameState.PLAYING, player_data=self._player_data)
         elif label == "SHOP":
             self._sm.switch_to(GameState.SHOP, player_data=self._player_data,
                                from_state="LEVEL_COMPLETE", level_num=next_level)
