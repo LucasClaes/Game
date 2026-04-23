@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 *.pyo
 data/save.json
+.claude/settings.local.json
+.claude/worktrees/
