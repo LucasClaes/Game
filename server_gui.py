@@ -6,9 +6,12 @@ import json
 import os
 import webbrowser
 import sys
+import http.server
+import socketserver
 
 SAVE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "save.json")
 SERVER_URL = "http://localhost:8000"
+SAVE_API_PORT = 8001
 
 UPGRADES = [
     ("damage",        "Sharper Blade",  5),
@@ -19,12 +22,67 @@ UPGRADES = [
 ]
 
 
+class _SaveHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def _cors(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self._cors()
+        self.end_headers()
+
+    def do_GET(self):
+        try:
+            with open(SAVE_PATH) as f:
+                body = f.read().encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._cors()
+            self.end_headers()
+            self.wfile.write(body)
+        except FileNotFoundError:
+            self.send_response(404)
+            self._cors()
+            self.end_headers()
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length)
+        try:
+            data = json.loads(body)
+            os.makedirs(os.path.dirname(SAVE_PATH), exist_ok=True)
+            with open(SAVE_PATH, "w") as f:
+                json.dump(data, f, indent=2)
+            self.send_response(200)
+            self._cors()
+            self.end_headers()
+        except Exception:
+            self.send_response(400)
+            self._cors()
+            self.end_headers()
+
+
+class _SaveServer(socketserver.TCPServer):
+    allow_reuse_address = True
+
+
+def _run_save_api():
+    with _SaveServer(("", SAVE_API_PORT), _SaveHandler) as srv:
+        srv.serve_forever()
+
+
 class ServerGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Game Launcher")
         self.root.resizable(False, False)
         self.process = None
+        threading.Thread(target=_run_save_api, daemon=True).start()
         self._build_ui()
 
     def _build_ui(self):
@@ -33,8 +91,7 @@ class ServerGUI:
         sf.pack(fill="x", padx=12, pady=(12, 6))
 
         self.status_var = tk.StringVar(value="Stopped")
-        dot = ttk.Label(sf, textvariable=self.status_var, width=10)
-        dot.pack(side="left")
+        ttk.Label(sf, textvariable=self.status_var, width=10).pack(side="left")
 
         self.start_btn = ttk.Button(sf, text="Start", command=self._start)
         self.start_btn.pack(side="left", padx=4)
@@ -96,9 +153,9 @@ class ServerGUI:
         }
         with open(SAVE_PATH, "w") as f:
             json.dump(data, f, indent=2)
-        messagebox.showinfo("Saved", "Save data written to data/save.json")
+        messagebox.showinfo("Saved", "Save data written — reload the game in browser to apply.")
 
-    # --- server ---
+    # --- web server ---
 
     def _start(self):
         if self.process:
