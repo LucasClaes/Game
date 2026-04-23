@@ -56,6 +56,9 @@ class Level:
         self.tile_grid: list[list[bool]] = []
         self._bg_surf: pygame.Surface | None = None
         self._exit_anim = 0.0
+        self.is_boss = False
+        self.boss_spawn = None   # pixel coords tuple, set for boss levels
+        self._force_open = False
 
     # ── geometry ──────────────────────────────────────────────────────────────
     @property
@@ -72,6 +75,10 @@ class Level:
 
     @property
     def exit_open(self) -> bool:
+        if self._force_open:
+            return True
+        if self.is_boss:
+            return False  # boss levels only open when boss is killed
         return not self.exit_requires_all_coins or self.coins_remaining == 0
 
     def is_complete(self, player_rect: pygame.Rect) -> bool:
@@ -88,6 +95,11 @@ class Level:
     def generate(cls, level_num: int) -> "Level":
         from world.procgen import generate as _gen
         return cls._from_dict(_gen(level_num), level_num)
+
+    @classmethod
+    def generate_boss(cls, level_num: int) -> "Level":
+        from world.procgen import generate_boss as _gen_boss
+        return cls._from_dict(_gen_boss(level_num), level_num)
 
     @classmethod
     def _from_dict(cls, raw: dict, level_index: int = 0) -> "Level":
@@ -122,6 +134,14 @@ class Level:
             tile = inst["tile"]
             level.instructions.append(
                 (inst["text"], tile[0] * TILE_SIZE, tile[1] * TILE_SIZE))
+
+        level.is_boss = raw.get("is_boss_level", False)
+        if "boss_spawn" in raw:
+            bs = raw["boss_spawn"]
+            level.boss_spawn = (
+                bs[0] * TILE_SIZE + TILE_SIZE // 2,
+                bs[1] * TILE_SIZE + TILE_SIZE // 2,
+            )
 
         level.tile_grid = level._build_tile_grid()
         level._bg_surf = level._build_bg_surface()

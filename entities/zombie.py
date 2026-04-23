@@ -1,6 +1,6 @@
 import math
 import pygame
-from core.settings import TILE_SIZE, WHITE, ZOMBIE_TYPES
+from core.settings import TILE_SIZE, WHITE, ZOMBIE_TYPES, AGGRO_RADIUS
 
 _PATH_INTERVAL = 0.45  # seconds between BFS recalculations
 
@@ -13,7 +13,9 @@ _STYLE = {
 
 
 class Zombie:
-    SIZE = 28
+    SIZE  = 28
+    IDLE  = 0
+    CHASE = 1
 
     def __init__(self, tile_x: int, tile_y: int, zombie_type: str = "basic"):
         stats = ZOMBIE_TYPES.get(zombie_type, ZOMBIE_TYPES["basic"])
@@ -30,6 +32,7 @@ class Zombie:
         self.rect = pygame.Rect(0, 0, self.SIZE, self.SIZE)
         self.rect.center = (int(self.pos.x), int(self.pos.y))
         self.alive = True
+        self._state = Zombie.IDLE
         self._hit_flash = 0.0
         self._invincible = 0.0
         self._path: list = []
@@ -44,6 +47,14 @@ class Zombie:
         self._invincible = max(0.0, self._invincible - dt)
         self._anim += dt
         self._depenetrate(walls)
+
+        # Aggro detection: switch to CHASE when player is close enough
+        if self._state == Zombie.IDLE:
+            if (player_pos - self.pos).length() <= AGGRO_RADIUS:
+                self._state = Zombie.CHASE
+
+        if self._state == Zombie.IDLE:
+            return  # stand still until aggroed
 
         self._path_timer -= dt
         if tile_grid is not None and (self._path_timer <= 0 or not self._path):
@@ -109,6 +120,7 @@ class Zombie:
     def take_damage(self, amount: int) -> bool:
         if self._invincible > 0:
             return False
+        self._state = Zombie.CHASE  # always aggro when hit
         self.hp -= amount
         self._hit_flash = 0.12
         self._invincible = 0.14

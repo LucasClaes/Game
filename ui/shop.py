@@ -60,20 +60,31 @@ class ShopScreen:
                     if rect.collidepoint(event.pos):
                         self._try_purchase(i)
 
+    def _current_level(self, upg: dict) -> int:
+        uid = upg["id"]
+        if upg.get("consumable"):
+            grant = upg.get("grant", 1)
+            return self._player_data.get(uid, 0) // grant
+        return self._player_data["upgrades"].get(uid, 0)
+
     def _try_purchase(self, index):
         upg = self._upgrades[index]
         uid = upg["id"]
-        current_level = self._player_data["upgrades"].get(uid, 0)
+        cur_lv = self._current_level(upg)
         max_level = upg["max_level"]
-        if current_level >= max_level:
+        if cur_lv >= max_level:
             self._set_feedback("Already maxed!", False)
             return
-        cost = upg["costs"][current_level]
+        cost = upg["costs"][cur_lv]
         if self._player_data["coins"] < cost:
             self._set_feedback("Not enough coins!", False)
             return
         self._player_data["coins"] -= cost
-        self._player_data["upgrades"][uid] = current_level + 1
+        if upg.get("consumable"):
+            grant = upg.get("grant", 1)
+            self._player_data[uid] = self._player_data.get(uid, 0) + grant
+        else:
+            self._player_data["upgrades"][uid] = cur_lv + 1
         from core.save import write_save
         write_save(self._player_data)
         self._set_feedback(f"Purchased: {upg['name']}!", True)
@@ -101,10 +112,13 @@ class ShopScreen:
             surface.blit(coins_surf, (SCREEN_W // 2 - coins_surf.get_width() // 2, 90))
 
         item_w = 700
-        item_h = 62
+        n = len(self._upgrades)
+        # Fit all items between y=130 and y=570 (leave room for back button)
+        total_space = 440
+        item_h = max(44, min(62, (total_space - (n - 1) * 4) // n))
+        gap = item_h + 4
         start_x = SCREEN_W // 2 - item_w // 2
-        start_y = 140
-        gap = 68
+        start_y = 130
 
         self._item_rects = []
         for i, upg in enumerate(self._upgrades):
@@ -112,7 +126,7 @@ class ShopScreen:
             self._item_rects.append(rect)
             selected = i == self._selected
             uid = upg["id"]
-            cur_lv = self._player_data["upgrades"].get(uid, 0) if self._player_data else 0
+            cur_lv = self._current_level(upg) if self._player_data else 0
             maxed = cur_lv >= upg["max_level"]
             affordable = (self._player_data and
                           not maxed and
@@ -136,7 +150,12 @@ class ShopScreen:
             surface.blit(desc_s, (rect.x + 14, rect.y + 32))
 
             # Level indicator
-            lv_text = f"Lv {cur_lv}/{upg['max_level']}"
+            if upg.get("consumable"):
+                stock = self._player_data.get(uid, 0) if self._player_data else 0
+                max_stock = upg["max_level"] * upg.get("grant", 1)
+                lv_text = f"Stock: {stock}/{max_stock}"
+            else:
+                lv_text = f"Lv {cur_lv}/{upg['max_level']}"
             lv_color = GREEN if maxed else (WHITE if selected else GRAY)
             lv_s = self._font.render(lv_text, True, lv_color)
             surface.blit(lv_s, (rect.right - lv_s.get_width() - 110, rect.y + 8))
@@ -156,8 +175,7 @@ class ShopScreen:
             alpha = min(255, int(self._feedback_timer * 255))
             fb_s = self._font.render(self._feedback, True, self._feedback_color)
             fb_s.set_alpha(alpha)
-            surface.blit(fb_s, (SCREEN_W // 2 - fb_s.get_width() // 2,
-                                 start_y + len(self._upgrades) * gap + 10))
+            surface.blit(fb_s, (SCREEN_W // 2 - fb_s.get_width() // 2, SCREEN_H - 90))
 
         # Back button
         btn_w, btn_h = 160, 44

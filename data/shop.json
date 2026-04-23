@@ -34,6 +34,38 @@
       "description": "Unlocks ranged combat. Right-click to fire projectiles.",
       "max_level": 1,
       "costs": [200]
+    },
+    {
+      "id": "armor",
+      "name": "Armor Plates",
+      "description": "Reduces damage taken by 20% per level (max 60%)",
+      "max_level": 3,
+      "costs": [100, 200, 350]
+    },
+    {
+      "id": "companion",
+      "name": "Robot Companion",
+      "description": "Orbiting robot that auto-attacks enemies within 180px",
+      "max_level": 2,
+      "costs": [280, 500]
+    },
+    {
+      "id": "bombs",
+      "name": "Bomb Pack",
+      "description": "3 bombs (Q key) — damages all enemies within 200px for 150",
+      "max_level": 3,
+      "costs": [75, 75, 75],
+      "consumable": true,
+      "grant": 3
+    },
+    {
+      "id": "shields",
+      "name": "Energy Shield",
+      "description": "2 shields (E key) — absorbs all damage for 5 seconds",
+      "max_level": 3,
+      "costs": [100, 100, 100],
+      "consumable": true,
+      "grant": 2
     }
   ]
 }

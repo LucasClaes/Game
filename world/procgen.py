@@ -10,7 +10,7 @@ from core.settings import (
 
 
 def generate(level_num: int) -> dict:
-    idx = level_num - 3
+    idx = level_num  # 0-indexed from level 0
     tile_w = min(PROCGEN_BASE_W + PROCGEN_GROWTH_W * idx, PROCGEN_MAX_W)
     tile_h = min(PROCGEN_BASE_H + PROCGEN_GROWTH_H * idx, PROCGEN_MAX_H)
     room_count = min(PROCGEN_BASE_ROOMS + idx, 20)
@@ -21,6 +21,35 @@ def generate(level_num: int) -> dict:
             return result
 
     return _fallback(level_num)
+
+
+def generate_boss(level_num: int) -> dict:
+    boss_level = level_num // 4  # 1 for level 4, 2 for level 8, etc.
+    w, h = 34, 24
+    walls = []
+
+    # Perimeter walls
+    walls += [[0, 0, w, 1], [0, h - 1, w, 1],
+              [0, 0, 1, h], [w - 1, 0, 1, h]]
+
+    # Four 2×2 pillar obstacles (symmetrical)
+    for px, py in [(7, 5), (7, 17), (25, 5), (25, 17)]:
+        walls.append([px, py, 2, 2])
+
+    return {
+        "id": level_num,
+        "name": f"BOSS — Floor {level_num}",
+        "background_color": [70, 8, 8],
+        "is_boss_level": True,
+        "player_start": [2, 12],
+        "boss_spawn": [31, 12],
+        "exit": [1, 11],
+        "exit_requires_all_coins": False,
+        "walls": walls,
+        "coins": [],
+        "zombies": [],
+        "instructions": [],
+    }
 
 
 def _attempt(level_num, idx, tile_w, tile_h, room_count):

@@ -17,9 +17,12 @@ MELEE_DAMAGE_BASE = 25
 
 ZOMBIE_TYPES = {
     "basic": {"hp": 60,  "speed": 90,  "damage": 1, "coin_drop": 5},
-    "fast":  {"hp": 40,  "speed": 160, "damage": 1, "coin_drop": 8},
-    "tank":  {"hp": 150, "speed": 55,  "damage": 2, "coin_drop": 15},
+    "fast":  {"hp": 35,  "speed": 175, "damage": 2, "coin_drop": 12},
+    "tank":  {"hp": 220, "speed": 50,  "damage": 3, "coin_drop": 25},
 }
+
+AGGRO_RADIUS       = 200   # px — zombie detection range
+CHAIN_AGGRO_RADIUS = 80    # px — radius for alerting nearby zombies on hit
 
 # Colors
 BLACK      = (0,   0,   0)

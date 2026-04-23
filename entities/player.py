@@ -16,7 +16,7 @@ _PLAYER_RADIUS  = 13
 class Player:
     SIZE = 26
 
-    def __init__(self, tile_x: int, tile_y: int, upgrades: dict):
+    def __init__(self, tile_x: int, tile_y: int, upgrades: dict, player_data: dict = None):
         self.pos = pygame.Vector2(
             tile_x * TILE_SIZE + TILE_SIZE // 2,
             tile_y * TILE_SIZE + TILE_SIZE // 2,
@@ -24,17 +24,26 @@ class Player:
         self.rect = pygame.Rect(0, 0, self.SIZE, self.SIZE)
         self.rect.center = (int(self.pos.x), int(self.pos.y))
 
-        spd = upgrades.get("speed", 0)
-        dmg = upgrades.get("damage", 0)
-        fr  = upgrades.get("fire_rate", 0)
-        hp  = upgrades.get("health", 0)
+        spd   = upgrades.get("speed", 0)
+        dmg   = upgrades.get("damage", 0)
+        fr    = upgrades.get("fire_rate", 0)
+        hp    = upgrades.get("health", 0)
+        armor = upgrades.get("armor", 0)
 
-        self.speed = PLAYER_SPEED_BASE * (1.0 + spd * 0.10)
-        self.melee_damage = int(MELEE_DAMAGE_BASE * (1.0 + dmg * 0.20))
-        self.bullet_damage = int(BULLET_DAMAGE_BASE * (1.0 + dmg * 0.20))
+        self.speed          = PLAYER_SPEED_BASE * (1.0 + spd * 0.10)
+        self.melee_damage   = int(MELEE_DAMAGE_BASE * (1.0 + dmg * 0.20))
+        self.bullet_damage  = int(BULLET_DAMAGE_BASE * (1.0 + dmg * 0.20))
         self.swing_cooldown = MELEE_COOLDOWN_BASE * (1.0 - min(fr * 0.15, 0.70))
         self.shoot_cooldown = SHOOT_COOLDOWN_BASE * (1.0 - min(fr * 0.20, 0.75))
-        self.has_ranged = upgrades.get("ranged_unlock", 0) >= 1
+        self.has_ranged     = upgrades.get("ranged_unlock", 0) >= 1
+        self.companion_count = upgrades.get("companion", 0)
+        self.damage_reduction = min(armor * 0.20, 0.60)
+
+        pd = player_data or {}
+        self.bombs   = pd.get("bombs", 0)
+        self.shields = pd.get("shields", 0)
+        self.shielded        = False
+        self._shield_timer   = 0.0
 
         self.max_hp = PLAYER_HP_BASE
         self.hp = self.max_hp
@@ -45,7 +54,7 @@ class Player:
         self.swing_cooldown_timer = 0.0
         self.shoot_timer = 0.0
         self.invincible_timer = 0.0
-        self.INVINCIBLE_DURATION = 1.2
+        self.INVINCIBLE_DURATION = 0.9
 
         self.is_swinging = False
         self.facing = 0.0
@@ -84,11 +93,29 @@ class Player:
         bullets.append(Bullet(spawn, direction * BULLET_SPEED, self.bullet_damage))
         self.shoot_timer = self.shoot_cooldown
 
+    def use_bomb(self) -> bool:
+        if self.bombs > 0:
+            self.bombs -= 1
+            return True
+        return False
+
+    def use_shield(self) -> bool:
+        if self.shields > 0 and not self.shielded:
+            self.shields -= 1
+            self.shielded = True
+            self._shield_timer = 5.0
+            return True
+        return False
+
     def update(self, dt: float, keys, walls: list):
         self._anim += dt
         self.invincible_timer = max(0.0, self.invincible_timer - dt)
         self.swing_cooldown_timer = max(0.0, self.swing_cooldown_timer - dt)
         self.shoot_timer = max(0.0, self.shoot_timer - dt)
+        if self.shielded:
+            self._shield_timer -= dt
+            if self._shield_timer <= 0:
+                self.shielded = False
 
         if self.is_swinging:
             self.swing_timer -= dt
@@ -120,6 +147,11 @@ class Player:
     def take_damage(self, amount: int) -> bool:
         if self.invincible_timer > 0:
             return False
+        if self.shielded:
+            # Shield absorbs the hit; give brief invincibility to prevent instant re-damage
+            self.invincible_timer = 0.5
+            return False
+        amount = max(1, int(amount * (1.0 - self.damage_reduction)))
         self.hp -= amount
         self.invincible_timer = self.INVINCIBLE_DURATION
         if self.hp <= 0:
@@ -145,6 +177,12 @@ class Player:
 
         from systems.gfx import glow
         glow(surface, cx, cy, 22, _PLAYER_COLOR, 80)
+
+        # Shield ring
+        if self.shielded:
+            pulse = 0.5 + 0.5 * math.sin(self._shield_timer * 8)
+            glow(surface, cx, cy, 28, CYAN, int(80 + pulse * 60))
+            pygame.draw.circle(surface, CYAN, (cx, cy), _PLAYER_RADIUS + 8, 2)
 
         # Body
         pygame.draw.circle(surface, _PLAYER_COLOR, (cx, cy), _PLAYER_RADIUS)

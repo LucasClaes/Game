@@ -1,6 +1,8 @@
+import math
 import pygame
-from core.settings import SCREEN_W, SCREEN_H, WHITE, BLACK, YELLOW, RED, DARK_GRAY
+from core.settings import SCREEN_W, SCREEN_H, WHITE, BLACK, YELLOW, RED, DARK_GRAY, CHAIN_AGGRO_RADIUS
 from entities.player import Player
+from entities.zombie import Zombie
 from world.level import Level
 from systems.camera import Camera
 from ui.hud import HUD
@@ -17,28 +19,48 @@ class PlayingScreen:
         self._level = None
         self._camera = Camera()
         self._bullets = []
+        self._enemy_bullets = []
+        self._boss = None
+        self._companions = []
         self._player_data = None
         self._coins_earned_this_run = 0
         self._hud = HUD(font, big_font)
         self._minimap = Minimap()
         self._paused = False
-        self._complete_delay = 0.0  # brief pause before switching on level complete
+        self._complete_delay = 0.0
 
     def on_enter(self, **kwargs):
         self._player_data = kwargs.get("player_data")
         level_index = self._player_data.get("current_level", 0)
 
-        if level_index < Level.level_count():
-            self._level = Level.from_json(level_index)
+        is_boss = level_index > 0 and level_index % 4 == 0
+        if is_boss:
+            self._level = Level.generate_boss(level_index)
+            from entities.boss import Boss
+            self._boss = Boss(
+                self._level.boss_spawn[0],
+                self._level.boss_spawn[1],
+                boss_level=level_index // 4,
+            )
         else:
             self._level = Level.generate(level_index)
+            self._boss = None
 
         self._player = Player(
             self._level.player_start[0],
             self._level.player_start[1],
             self._player_data.get("upgrades", {}),
+            player_data=self._player_data,
         )
+
+        from entities.companion import Companion
+        self._companions = [
+            Companion(self._player, i)
+            for i in range(self._player.companion_count)
+        ]
+
         self._bullets = []
+        self._enemy_bullets = []
         self._coins_earned_this_run = 0
         self._complete_delay = 0.0
         self._paused = False
@@ -48,8 +70,13 @@ class PlayingScreen:
             return
 
         for event in events:
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                self._paused = not self._paused
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self._paused = not self._paused
+                elif event.key == pygame.K_q and not self._paused:
+                    self._use_bomb()
+                elif event.key == pygame.K_e and not self._paused:
+                    self._use_shield()
 
         if self._paused:
             return
@@ -65,12 +92,43 @@ class PlayingScreen:
         self._player.update(dt, keys, self._level.walls)
         self._level.update(dt)
 
-        # Update zombies (with BFS pathfinding)
+        # Update zombies
         for zombie in self._level.zombies:
             zombie.update(dt, self._player.pos, self._level.walls,
                           self._level.tile_grid, self._level.tile_w, self._level.tile_h)
 
-        # Update bullets
+        # Update boss
+        if self._boss and self._boss.alive:
+            new_eb = self._boss.update(
+                dt, self._player.pos, self._level.walls,
+                self._level.pixel_w, self._level.pixel_h,
+            )
+            self._enemy_bullets.extend(new_eb)
+            if not self._boss.alive:
+                self._award_coins(self._boss.coins)
+                self._level._force_open = True
+
+        # Update enemy bullets
+        for eb in self._enemy_bullets:
+            eb.update(dt, self._level.walls, self._level.pixel_w, self._level.pixel_h)
+        self._enemy_bullets = [eb for eb in self._enemy_bullets if eb.alive]
+
+        # Enemy bullet vs player
+        for eb in self._enemy_bullets:
+            if eb.rect.colliderect(self._player.rect):
+                died = self._player.take_damage(eb.damage)
+                eb.alive = False
+                if died:
+                    self._on_player_died()
+                    return
+
+        # Update companion bullets (added to self._bullets for unified collision)
+        targets = list(self._level.zombies) + ([self._boss] if self._boss and self._boss.alive else [])
+        for c in self._companions:
+            new_bullets = c.update(targets, dt)
+            self._bullets.extend(new_bullets)
+
+        # Update player bullets
         for b in self._bullets:
             b.update(dt, self._level.walls, self._level.pixel_w, self._level.pixel_h)
         self._bullets = [b for b in self._bullets if b.alive]
@@ -85,6 +143,20 @@ class PlayingScreen:
                     killed = zombie.take_damage(bullet.damage)
                     if killed:
                         self._award_coins(zombie.coin_drop)
+                    else:
+                        self._chain_aggro(zombie)
+
+        # Bullet vs boss
+        if self._boss and self._boss.alive:
+            for bullet in self._bullets:
+                if not bullet.alive:
+                    continue
+                if bullet.rect.colliderect(self._boss.rect):
+                    bullet.alive = False
+                    killed = self._boss.take_damage(bullet.damage)
+                    if killed:
+                        self._award_coins(self._boss.coins)
+                        self._level._force_open = True
 
         # Melee vs zombies
         if self._player.is_swinging:
@@ -95,8 +167,17 @@ class PlayingScreen:
                 if hb.colliderect(zombie.rect):
                     self._player._hit_this_swing.add(id(zombie))
                     killed = zombie.take_damage(self._player.melee_damage)
+                    self._chain_aggro(zombie)
                     if killed:
                         self._award_coins(zombie.coin_drop)
+            # Melee vs boss
+            if self._boss and self._boss.alive and id(self._boss) not in self._player._hit_this_swing:
+                if hb.colliderect(self._boss.rect):
+                    self._player._hit_this_swing.add(id(self._boss))
+                    killed = self._boss.take_damage(self._player.melee_damage)
+                    if killed:
+                        self._award_coins(self._boss.coins)
+                        self._level._force_open = True
 
         # Remove dead zombies
         self._level.zombies = [z for z in self._level.zombies if z.alive]
@@ -115,11 +196,51 @@ class PlayingScreen:
                     self._on_player_died()
                     return
 
+        # Boss contact damage
+        if self._boss and self._boss.alive:
+            if self._player.rect.colliderect(self._boss.rect):
+                died = self._player.take_damage(self._boss.damage)
+                if died:
+                    self._on_player_died()
+                    return
+
         # Level complete check
         if self._level.is_complete(self._player.rect) and self._complete_delay == 0:
             self._complete_delay = 0.8
 
         self._camera.update(self._player.pos, self._level.pixel_w, self._level.pixel_h)
+
+    def _chain_aggro(self, hit_zombie):
+        for z in self._level.zombies:
+            if z is not hit_zombie and (z.pos - hit_zombie.pos).length() <= CHAIN_AGGRO_RADIUS:
+                z._state = Zombie.CHASE
+
+    def _use_bomb(self):
+        if not self._player.use_bomb():
+            return
+        self._player_data["bombs"] = self._player.bombs
+        px, py = self._player.pos.x, self._player.pos.y
+        blast_r = 200
+        for z in list(self._level.zombies):
+            if math.hypot(z.pos.x - px, z.pos.y - py) < blast_r:
+                killed = z.take_damage(150)
+                if killed:
+                    self._award_coins(z.coin_drop)
+        if self._boss and self._boss.alive:
+            if math.hypot(self._boss.pos.x - px, self._boss.pos.y - py) < blast_r:
+                killed = self._boss.take_damage(150)
+                if killed:
+                    self._award_coins(self._boss.coins)
+                    self._level._force_open = True
+        self._level.zombies = [z for z in self._level.zombies if z.alive]
+        from core.save import write_save
+        write_save(self._player_data)
+
+    def _use_shield(self):
+        if self._player.use_shield():
+            self._player_data["shields"] = self._player.shields
+            from core.save import write_save
+            write_save(self._player_data)
 
     def _award_coins(self, amount: int):
         self._coins_earned_this_run += amount
@@ -152,11 +273,22 @@ class PlayingScreen:
         for bullet in self._bullets:
             bullet.draw(surface, self._camera.offset)
 
+        for eb in self._enemy_bullets:
+            eb.draw(surface, self._camera.offset)
+
         for zombie in self._level.zombies:
             zombie.draw(surface, self._camera.offset)
 
+        if self._boss:
+            self._boss.draw(surface, self._camera.offset)
+
+        for c in self._companions:
+            c.draw(surface, self._camera.offset)
+
         self._player.draw(surface, self._camera.offset)
-        self._hud.draw(surface, self._player, self._level, len(self._level.coins))
+
+        self._hud.draw(surface, self._player, self._level, len(self._level.coins),
+                       player_data=self._player_data, boss=self._boss)
         self._minimap.draw(surface, self._level, self._player, self._level.zombies)
 
         if self._paused:

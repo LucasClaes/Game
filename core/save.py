@@ -15,6 +15,8 @@ _DEFAULT = {
         "health": 0,
         "ranged_unlock": 0,
     },
+    "bombs": 0,
+    "shields": 0,
 }
 
 
