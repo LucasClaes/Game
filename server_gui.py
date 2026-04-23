@@ -9,9 +9,10 @@ import sys
 import http.server
 import socketserver
 
-SAVE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "save.json")
-SERVER_URL = "http://localhost:8000"
-SAVE_API_PORT = 8001
+SAVE_PATH    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "save.json")
+GAME_URL     = "http://localhost:8000"
+LOADER_PORT  = 8002   # sets localStorage then redirects to game
+SAVE_API_PORT = 8001  # receives in-game POST saves
 
 UPGRADES = [
     ("damage",        "Sharper Blade",  5),
@@ -22,33 +23,21 @@ UPGRADES = [
 ]
 
 
-class _SaveHandler(http.server.BaseHTTPRequestHandler):
+# ── Save API (port 8001) — receives POST saves from the in-game write_save ──
+
+class _SaveAPIHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
     def do_OPTIONS(self):
         self.send_response(200)
         self._cors()
         self.end_headers()
-
-    def do_GET(self):
-        try:
-            with open(SAVE_PATH) as f:
-                body = f.read().encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self._cors()
-            self.end_headers()
-            self.wfile.write(body)
-        except FileNotFoundError:
-            self.send_response(404)
-            self._cors()
-            self.end_headers()
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -67,14 +56,48 @@ class _SaveHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
 
 
-class _SaveServer(socketserver.TCPServer):
+# ── Loader page (port 8002) — injects save into localStorage, redirects to game ──
+
+class _LoaderHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        try:
+            with open(SAVE_PATH) as f:
+                raw = f.read()
+            # Double-encode so it becomes a safe JS string literal
+            js_string = json.dumps(raw)
+        except FileNotFoundError:
+            js_string = '"{}"'
+
+        html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head><body>
+<script>
+try {{ localStorage.setItem('zom_save', {js_string}); }} catch(e) {{}}
+location.replace('{GAME_URL}/');
+</script>
+<p>Loading game&hellip;</p>
+</body></html>"""
+
+        body = html.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+class _ReuseServer(socketserver.TCPServer):
     allow_reuse_address = True
 
 
-def _run_save_api():
-    with _SaveServer(("", SAVE_API_PORT), _SaveHandler) as srv:
+def _serve(port, handler):
+    with _ReuseServer(("", port), handler) as srv:
         srv.serve_forever()
 
+
+# ── GUI ──
 
 class ServerGUI:
     def __init__(self, root):
@@ -82,11 +105,11 @@ class ServerGUI:
         self.root.title("Game Launcher")
         self.root.resizable(False, False)
         self.process = None
-        threading.Thread(target=_run_save_api, daemon=True).start()
+        threading.Thread(target=_serve, args=(SAVE_API_PORT, _SaveAPIHandler), daemon=True).start()
+        threading.Thread(target=_serve, args=(LOADER_PORT,   _LoaderHandler),  daemon=True).start()
         self._build_ui()
 
     def _build_ui(self):
-        # --- Server ---
         sf = ttk.LabelFrame(self.root, text="Web Server", padding=10)
         sf.pack(fill="x", padx=12, pady=(12, 6))
 
@@ -100,9 +123,8 @@ class ServerGUI:
         self.stop_btn.pack(side="left", padx=4)
 
         ttk.Button(sf, text="Open in Browser",
-                   command=lambda: webbrowser.open(SERVER_URL)).pack(side="left", padx=8)
+                   command=lambda: webbrowser.open(f"http://localhost:{LOADER_PORT}/")).pack(side="left", padx=8)
 
-        # --- Save data ---
         df = ttk.LabelFrame(self.root, text="Save Data", padding=10)
         df.pack(fill="x", padx=12, pady=6)
 
@@ -132,8 +154,6 @@ class ServerGUI:
 
         self._load()
 
-    # --- save data ---
-
     def _load(self):
         if not os.path.exists(SAVE_PATH):
             return
@@ -153,9 +173,7 @@ class ServerGUI:
         }
         with open(SAVE_PATH, "w") as f:
             json.dump(data, f, indent=2)
-        messagebox.showinfo("Saved", "Save data written — reload the game in browser to apply.")
-
-    # --- web server ---
+        messagebox.showinfo("Saved", "Saved. Click 'Open in Browser' to reload the game with new data.")
 
     def _start(self):
         if self.process:
