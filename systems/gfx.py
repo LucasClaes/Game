@@ -24,3 +24,15 @@ def glow(surface: pygame.Surface, cx: int, cy: int,
 def clear_cache():
     """Call if pygame display is re-created."""
     _cache.clear()
+
+
+_scanlines_surf: pygame.Surface | None = None
+
+
+def get_scanlines(w: int, h: int) -> pygame.Surface:
+    global _scanlines_surf
+    if _scanlines_surf is None or _scanlines_surf.get_size() != (w, h):
+        _scanlines_surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        for y in range(0, h, 2):
+            pygame.draw.line(_scanlines_surf, (0, 0, 0, 40), (0, y), (w, y))
+    return _scanlines_surf

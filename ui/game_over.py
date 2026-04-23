@@ -27,9 +27,10 @@ class GameOverScreen:
 
     def _go_to_menu(self):
         from core.state_machine import GameState
-        if self._player_data:
-            self._player_data["current_level"] = 0
-        self._sm.switch_to(GameState.MAIN_MENU, player_data=self._player_data)
+        from core.save import default_save, write_save
+        fresh = default_save()
+        write_save(fresh)
+        self._sm.switch_to(GameState.MAIN_MENU, player_data=fresh)
 
     def draw(self, surface: pygame.Surface):
         surface.fill((20, 5, 5))
@@ -41,9 +42,8 @@ class GameOverScreen:
             earned = self._font.render(f"+{self._coins_earned} coins earned this run", True, YELLOW)
             surface.blit(earned, (SCREEN_W // 2 - earned.get_width() // 2, 230))
 
-        if self._player_data:
-            bank = self._font.render(f"Bank total: {self._player_data['coins']} coins", True, YELLOW)
-            surface.blit(bank, (SCREEN_W // 2 - bank.get_width() // 2, 260))
+        reset_s = self._font.render("All progress lost. Back to square one.", True, (160, 60, 60))
+        surface.blit(reset_s, (SCREEN_W // 2 - reset_s.get_width() // 2, 265))
 
         btn_w, btn_h = 260, 52
         bx = SCREEN_W // 2 - btn_w // 2
@@ -57,3 +57,6 @@ class GameOverScreen:
 
         hint = self._font.render("Press ENTER or SPACE to continue", True, (120, 80, 80))
         surface.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, SCREEN_H - 40))
+
+        from systems.gfx import get_scanlines
+        surface.blit(get_scanlines(SCREEN_W, SCREEN_H), (0, 0))

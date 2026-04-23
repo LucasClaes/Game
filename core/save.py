@@ -46,6 +46,11 @@ def load_save() -> dict:
             return dict(_DEFAULT)
 
 
+def default_save() -> dict:
+    import copy
+    return copy.deepcopy(_DEFAULT)
+
+
 def write_save(data: dict):
     if sys.platform == "emscripten":
         payload = json.dumps(data)

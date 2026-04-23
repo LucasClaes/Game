@@ -5,6 +5,7 @@ from entities.player import Player
 from entities.zombie import Zombie
 from world.level import Level
 from systems.camera import Camera
+from systems.particles import ParticleSystem
 from ui.hud import HUD
 from ui.minimap import Minimap
 
@@ -28,6 +29,10 @@ class PlayingScreen:
         self._minimap = Minimap()
         self._paused = False
         self._complete_delay = 0.0
+        self._particles = ParticleSystem()
+        self._flash_timer = 0.0
+        self._flash_color = (200, 0, 0)
+        self._was_swinging = False
 
     def on_enter(self, **kwargs):
         self._player_data = kwargs.get("player_data")
@@ -36,12 +41,21 @@ class PlayingScreen:
         is_boss = level_index > 0 and level_index % 4 == 0
         if is_boss:
             self._level = Level.generate_boss(level_index)
-            from entities.boss import Boss
-            self._boss = Boss(
-                self._level.boss_spawn[0],
-                self._level.boss_spawn[1],
-                boss_level=level_index // 4,
-            )
+            boss_level = level_index // 4
+            if boss_level >= 2:
+                from entities.boss import Necromancer
+                self._boss = Necromancer(
+                    self._level.boss_spawn[0],
+                    self._level.boss_spawn[1],
+                    boss_level=boss_level,
+                )
+            else:
+                from entities.boss import Boss
+                self._boss = Boss(
+                    self._level.boss_spawn[0],
+                    self._level.boss_spawn[1],
+                    boss_level=boss_level,
+                )
         else:
             self._level = Level.generate(level_index)
             self._boss = None
@@ -64,6 +78,9 @@ class PlayingScreen:
         self._coins_earned_this_run = 0
         self._complete_delay = 0.0
         self._paused = False
+        self._particles.clear()
+        self._flash_timer = 0.0
+        self._was_swinging = False
 
     def update(self, events, dt):
         if self._player is None or self._level is None:
@@ -81,6 +98,8 @@ class PlayingScreen:
         if self._paused:
             return
 
+        self._flash_timer = max(0.0, self._flash_timer - dt)
+
         if self._complete_delay > 0:
             self._complete_delay -= dt
             if self._complete_delay <= 0:
@@ -88,9 +107,19 @@ class PlayingScreen:
             return
 
         keys = pygame.key.get_pressed()
+        prev_bullet_count = len(self._bullets)
         self._player.handle_input(keys, events, self._bullets, self._camera.offset)
+        if len(self._bullets) > prev_bullet_count:
+            self._sfx('shoot')
+
+        swing_now = self._player.is_swinging
+        if swing_now and not self._was_swinging:
+            self._sfx('melee')
+        self._was_swinging = swing_now
+
         self._player.update(dt, keys, self._level.walls)
         self._level.update(dt)
+        self._particles.update(dt)
 
         # Update zombies
         for zombie in self._level.zombies:
@@ -99,14 +128,19 @@ class PlayingScreen:
 
         # Update boss
         if self._boss and self._boss.alive:
-            new_eb = self._boss.update(
+            new_eb, new_zom = self._boss.update(
                 dt, self._player.pos, self._level.walls,
                 self._level.pixel_w, self._level.pixel_h,
             )
             self._enemy_bullets.extend(new_eb)
+            if new_zom and len(self._level.zombies) < 8:
+                self._level.zombies.extend(new_zom)
             if not self._boss.alive:
                 self._award_coins(self._boss.coins)
                 self._level._force_open = True
+                self._sfx('boss_roar')
+                self._flash_timer = 0.6
+                self._flash_color = (255, 120, 0)
 
         # Update enemy bullets
         for eb in self._enemy_bullets:
@@ -121,6 +155,10 @@ class PlayingScreen:
                 if died:
                     self._on_player_died()
                     return
+                else:
+                    self._sfx('player_hurt')
+                    self._flash_timer = 0.25
+                    self._flash_color = (200, 0, 0)
 
         # Update companion bullets (added to self._bullets for unified collision)
         targets = list(self._level.zombies) + ([self._boss] if self._boss and self._boss.alive else [])
@@ -143,6 +181,8 @@ class PlayingScreen:
                     killed = zombie.take_damage(bullet.damage)
                     if killed:
                         self._award_coins(zombie.coin_drop)
+                        self._sfx('enemy_die')
+                        self._particles.emit(zombie.pos.x, zombie.pos.y, 8, (200, 60, 60))
                     else:
                         self._chain_aggro(zombie)
 
@@ -157,6 +197,9 @@ class PlayingScreen:
                     if killed:
                         self._award_coins(self._boss.coins)
                         self._level._force_open = True
+                        self._sfx('boss_roar')
+                        self._flash_timer = 0.6
+                        self._flash_color = (255, 120, 0)
 
         # Melee vs zombies
         if self._player.is_swinging:
@@ -170,6 +213,8 @@ class PlayingScreen:
                     self._chain_aggro(zombie)
                     if killed:
                         self._award_coins(zombie.coin_drop)
+                        self._sfx('enemy_die')
+                        self._particles.emit(zombie.pos.x, zombie.pos.y, 8, (200, 60, 60))
             # Melee vs boss
             if self._boss and self._boss.alive and id(self._boss) not in self._player._hit_this_swing:
                 if hb.colliderect(self._boss.rect):
@@ -178,6 +223,9 @@ class PlayingScreen:
                     if killed:
                         self._award_coins(self._boss.coins)
                         self._level._force_open = True
+                        self._sfx('boss_roar')
+                        self._flash_timer = 0.6
+                        self._flash_color = (255, 120, 0)
 
         # Remove dead zombies
         self._level.zombies = [z for z in self._level.zombies if z.alive]
@@ -187,6 +235,8 @@ class PlayingScreen:
             if not coin.collected and self._player.rect.colliderect(coin.rect):
                 coin.collected = True
                 self._award_coins(10)
+                self._sfx('coin')
+                self._particles.emit(coin.rect.centerx, coin.rect.centery, 5, (255, 215, 0))
 
         # Zombie contact damage
         for zombie in self._level.zombies:
@@ -195,6 +245,10 @@ class PlayingScreen:
                 if died:
                     self._on_player_died()
                     return
+                else:
+                    self._sfx('player_hurt')
+                    self._flash_timer = 0.25
+                    self._flash_color = (200, 0, 0)
 
         # Boss contact damage
         if self._boss and self._boss.alive:
@@ -203,12 +257,24 @@ class PlayingScreen:
                 if died:
                     self._on_player_died()
                     return
+                else:
+                    self._sfx('player_hurt')
+                    self._flash_timer = 0.35
+                    self._flash_color = (200, 0, 0)
 
         # Level complete check
         if self._level.is_complete(self._player.rect) and self._complete_delay == 0:
             self._complete_delay = 0.8
+            self._sfx('level_up')
 
         self._camera.update(self._player.pos, self._level.pixel_w, self._level.pixel_h)
+
+    def _sfx(self, name: str):
+        try:
+            from systems.audio import audio
+            audio.play(name)
+        except Exception:
+            pass
 
     def _chain_aggro(self, hit_zombie):
         for z in self._level.zombies:
@@ -226,13 +292,17 @@ class PlayingScreen:
                 killed = z.take_damage(150)
                 if killed:
                     self._award_coins(z.coin_drop)
+                    self._particles.emit(z.pos.x, z.pos.y, 12, (255, 140, 0))
         if self._boss and self._boss.alive:
             if math.hypot(self._boss.pos.x - px, self._boss.pos.y - py) < blast_r:
                 killed = self._boss.take_damage(150)
                 if killed:
                     self._award_coins(self._boss.coins)
                     self._level._force_open = True
+                    self._sfx('boss_roar')
         self._level.zombies = [z for z in self._level.zombies if z.alive]
+        self._flash_timer = 0.4
+        self._flash_color = (255, 200, 50)
         from core.save import write_save
         write_save(self._player_data)
 
@@ -249,8 +319,10 @@ class PlayingScreen:
         write_save(self._player_data)
 
     def _on_player_died(self):
+        self._sfx('player_hurt')
         self._player.lives -= 1
         if self._player.lives <= 0:
+            self._sfx('game_over')
             from core.state_machine import GameState
             self._sm.switch_to(GameState.GAME_OVER, player_data=self._player_data,
                                coins_earned=self._coins_earned_this_run)
@@ -269,6 +341,8 @@ class PlayingScreen:
             return
 
         self._level.draw(surface, self._camera.offset, self._font)
+
+        self._particles.draw(surface, self._camera.offset)
 
         for bullet in self._bullets:
             bullet.draw(surface, self._camera.offset)
@@ -301,6 +375,17 @@ class PlayingScreen:
             msg = self._title.render("LEVEL CLEAR!", True, (100, 255, 130))
             surface.blit(msg, (SCREEN_W // 2 - msg.get_width() // 2,
                                SCREEN_H // 2 - msg.get_height() // 2))
+
+        # Screen flash overlay
+        if self._flash_timer > 0:
+            alpha = int(min(self._flash_timer * 200, 140))
+            fl = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            fl.fill((*self._flash_color, alpha))
+            surface.blit(fl, (0, 0))
+
+        # CRT scanlines
+        from systems.gfx import get_scanlines
+        surface.blit(get_scanlines(SCREEN_W, SCREEN_H), (0, 0))
 
     def _draw_pause(self, surface: pygame.Surface):
         overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
