@@ -33,6 +33,7 @@ class PlayingScreen:
         self._flash_timer = 0.0
         self._flash_color = (200, 0, 0)
         self._was_swinging = False
+        self._trap_timer = 0.0
 
     def on_enter(self, **kwargs):
         self._player_data = kwargs.get("player_data")
@@ -81,6 +82,12 @@ class PlayingScreen:
         self._particles.clear()
         self._flash_timer = 0.0
         self._was_swinging = False
+        self._trap_timer = 0.0
+        try:
+            from systems.audio import audio
+            audio.play_music("combat")
+        except Exception:
+            pass
 
     def update(self, events, dt):
         if self._player is None or self._level is None:
@@ -123,8 +130,9 @@ class PlayingScreen:
 
         # Update zombies
         for zombie in self._level.zombies:
-            zombie.update(dt, self._player.pos, self._level.walls,
-                          self._level.tile_grid, self._level.tile_w, self._level.tile_h)
+            new_eb = zombie.update(dt, self._player.pos, self._level.walls,
+                                   self._level.tile_grid, self._level.tile_w, self._level.tile_h)
+            self._enemy_bullets.extend(new_eb)
 
         # Update boss
         if self._boss and self._boss.alive:
@@ -238,6 +246,22 @@ class PlayingScreen:
                 self._sfx('coin')
                 self._particles.emit(coin.rect.centerx, coin.rect.centery, 5, (255, 215, 0))
 
+        # Trap damage (1 damage every 1.5s while standing on a trap)
+        if self._level.trap_rects:
+            self._trap_timer += dt
+            if self._trap_timer >= 1.5:
+                self._trap_timer = 0.0
+                for tr in self._level.trap_rects:
+                    if self._player.rect.colliderect(tr):
+                        died = self._player.take_damage(1)
+                        if died:
+                            self._on_player_died()
+                            return
+                        self._sfx('player_hurt')
+                        self._flash_timer = 0.25
+                        self._flash_color = (200, 80, 0)
+                        break
+
         # Zombie contact damage
         for zombie in self._level.zombies:
             if self._player.rect.colliderect(zombie.rect):
@@ -341,6 +365,14 @@ class PlayingScreen:
             return
 
         self._level.draw(surface, self._camera.offset, self._font)
+
+        for tr in self._level.trap_rects:
+            dr = tr.move(-self._camera.offset.x, -self._camera.offset.y)
+            pygame.draw.rect(surface, (110, 25, 15), dr)
+            pygame.draw.rect(surface, (200, 55, 30), dr, 2)
+            cx, cy = dr.centerx, dr.centery
+            for ddx, ddy in ((0, -7), (0, 7), (-7, 0), (7, 0)):
+                pygame.draw.line(surface, (220, 80, 50), (cx, cy), (cx + ddx, cy + ddy), 2)
 
         self._particles.draw(surface, self._camera.offset)
 

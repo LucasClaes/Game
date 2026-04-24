@@ -1,5 +1,6 @@
+import math
 import pygame
-from core.settings import SCREEN_W, SCREEN_H, BLACK, WHITE, YELLOW, DARK_GRAY, BLUE, GREEN
+from core.settings import SCREEN_W, SCREEN_H, WHITE, YELLOW, DARK_GRAY, BLUE
 
 
 class MainMenuScreen:
@@ -8,7 +9,7 @@ class MainMenuScreen:
         self._font = font
         self._big = big_font
         self._title = title_font
-        self._buttons = ["PLAY", "SHOP", "QUIT"]
+        self._buttons = ["PLAY", "SHOP", "SETTINGS", "QUIT"]
         self._selected = 0
         self._player_data = None
         self._anim = 0.0
@@ -17,6 +18,11 @@ class MainMenuScreen:
     def on_enter(self, **kwargs):
         self._player_data = kwargs.get("player_data")
         self._selected = 0
+        try:
+            from systems.audio import audio
+            audio.play_music("menu")
+        except Exception:
+            pass
 
     def update(self, events, dt):
         self._anim += dt
@@ -44,28 +50,28 @@ class MainMenuScreen:
             self._sm.switch_to(GameState.PLAYING, player_data=self._player_data)
         elif label == "SHOP":
             self._sm.switch_to(GameState.SHOP, player_data=self._player_data, from_state="MAIN_MENU")
+        elif label == "SETTINGS":
+            self._sm.switch_to(GameState.SETTINGS, player_data=self._player_data, from_state="MAIN_MENU")
         elif label == "QUIT":
             pygame.quit()
             import sys; sys.exit()
 
     def draw(self, surface: pygame.Surface):
-        import math
         surface.fill((15, 15, 25))
 
-        # Title
         title_surf = self._title.render("ZOMBIE MAZE", True, YELLOW)
         tx = SCREEN_W // 2 - title_surf.get_width() // 2
-        ty = 100 + int(math.sin(self._anim) * 5)
+        ty = 80 + int(math.sin(self._anim) * 5)
         surface.blit(title_surf, (tx, ty))
 
         sub = self._font.render("Collect coins. Kill zombies. Survive.", True, (160, 160, 180))
-        surface.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, 175))
+        surface.blit(sub, (SCREEN_W // 2 - sub.get_width() // 2, 155))
 
         # Buttons
         self._btn_rects = []
         btn_w, btn_h = 240, 50
-        start_y = 260
-        gap = 66
+        start_y = 210
+        gap = 64
         for i, label in enumerate(self._buttons):
             bx = SCREEN_W // 2 - btn_w // 2
             by = start_y + i * gap
@@ -80,10 +86,17 @@ class MainMenuScreen:
                                 rect.centery - text.get_height() // 2))
 
         # Coin count
+        y_info = start_y + len(self._buttons) * gap + 8
         if self._player_data:
             coin_surf = self._font.render(f"Bank: {self._player_data['coins']} coins", True, YELLOW)
-            surface.blit(coin_surf, (SCREEN_W // 2 - coin_surf.get_width() // 2, 480))
+            surface.blit(coin_surf, (SCREEN_W // 2 - coin_surf.get_width() // 2, y_info))
+
+            best_lv = self._player_data.get("best_level", 0)
+            best_c = self._player_data.get("best_coins", 0)
+            if best_lv > 0 or best_c > 0:
+                hs = self._font.render(f"Best: Level {best_lv}  |  {best_c} coins", True, (180, 160, 100))
+                surface.blit(hs, (SCREEN_W // 2 - hs.get_width() // 2, y_info + 22))
 
         # Controls hint
-        hint = self._font.render("WASD/Arrows: Move   LMB/Space: Melee   RMB: Shoot", True, (100, 100, 120))
+        hint = self._font.render("WASD/Arrows: Move   LMB/Space: Melee   RMB: Shoot   Shift: Dash", True, (100, 100, 120))
         surface.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, SCREEN_H - 36))

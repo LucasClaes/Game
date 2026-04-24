@@ -39,6 +39,15 @@ class Player:
         self.companion_count = upgrades.get("companion", 0)
         self.damage_reduction = min(armor * 0.20, 0.60)
 
+        self.dash_unlocked = upgrades.get("dash_unlock", 0) >= 1
+        dash_lv = upgrades.get("dash_upgrade", 0)
+        self.dash_speed = 420 + dash_lv * 60
+        self.dash_duration = 0.18
+        self.dash_cooldown = 2.0 - dash_lv * 0.4
+        self._dash_timer = 0.0
+        self._dash_cd_timer = 0.0
+        self._dash_dir = pygame.Vector2(1, 0)
+
         pd = player_data or {}
         self.bombs   = pd.get("bombs", 0)
         self.shields = pd.get("shields", 0)
@@ -123,6 +132,9 @@ class Player:
                 self.is_swinging = False
                 self.swing_cooldown_timer = self.swing_cooldown
 
+        self._dash_timer = max(0.0, self._dash_timer - dt)
+        self._dash_cd_timer = max(0.0, self._dash_cd_timer - dt)
+
         dx = dy = 0
         if keys[pygame.K_a] or keys[pygame.K_LEFT]:  dx -= 1
         if keys[pygame.K_d] or keys[pygame.K_RIGHT]: dx += 1
@@ -132,8 +144,23 @@ class Player:
             dx *= 0.7071
             dy *= 0.7071
 
+        if (self.dash_unlocked and self._dash_timer <= 0 and self._dash_cd_timer <= 0
+                and (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT])):
+            if dx != 0 or dy != 0:
+                self._dash_dir = pygame.Vector2(dx, dy).normalize()
+            else:
+                self._dash_dir = pygame.Vector2(1, 0).rotate(self.facing)
+            self._dash_timer = self.dash_duration
+            self._dash_cd_timer = self.dash_cooldown
+            self.invincible_timer = max(self.invincible_timer, 0.3)
+
         from systems.collision import resolve_wall_collision
-        resolve_wall_collision(self.rect, walls, dx * self.speed * dt, dy * self.speed * dt)
+        if self._dash_timer > 0:
+            resolve_wall_collision(self.rect, walls,
+                                   self._dash_dir.x * self.dash_speed * dt,
+                                   self._dash_dir.y * self.dash_speed * dt)
+        else:
+            resolve_wall_collision(self.rect, walls, dx * self.speed * dt, dy * self.speed * dt)
         self.pos.x = self.rect.centerx
         self.pos.y = self.rect.centery
 

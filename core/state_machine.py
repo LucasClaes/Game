@@ -7,6 +7,7 @@ class GameState(Enum):
     SHOP = auto()
     GAME_OVER = auto()
     LEVEL_COMPLETE = auto()
+    SETTINGS = auto()
 
 
 class StateManager:

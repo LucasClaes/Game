@@ -35,6 +35,11 @@ class ShopScreen:
         self._next_level = kwargs.get("level_num", 0)
         self._selected = 0
         self._feedback = ""
+        try:
+            from systems.audio import audio
+            audio.play_music("shop")
+        except Exception:
+            pass
 
     def update(self, events, dt):
         self._feedback_timer = max(0.0, self._feedback_timer - dt)

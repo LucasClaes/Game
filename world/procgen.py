@@ -48,6 +48,7 @@ def generate_boss(level_num: int) -> dict:
         "walls": walls,
         "coins": [],
         "zombies": [],
+        "traps": [],
         "instructions": [],
     }
 
@@ -108,6 +109,18 @@ def _attempt(level_num, idx, tile_w, tile_h, room_count):
         return None
     coin_positions = random.sample(coin_candidates, coin_count)
 
+    # Traps on floor tiles (level 3+)
+    trap_positions = []
+    if idx >= 2:
+        trap_candidates = [
+            (tx, ty) for tx, ty in coin_candidates
+            if (tx, ty) not in coin_positions
+            and all(_mdist((tx, ty), e) >= 4 for e in exclude)
+        ]
+        trap_count = min(idx - 1, 6)
+        if len(trap_candidates) >= trap_count:
+            trap_positions = random.sample(trap_candidates, trap_count)
+
     zombie_candidates = [
         (tx, ty)
         for ty in range(1, tile_h - 1)
@@ -134,6 +147,7 @@ def _attempt(level_num, idx, tile_w, tile_h, room_count):
         "walls": _build_walls(walkable, tile_w, tile_h),
         "coins": [[cx, cy] for cx, cy in coin_positions],
         "zombies": _make_zombies(zombie_positions, idx),
+        "traps": [[tx, ty] for tx, ty in trap_positions],
         "instructions": [],
     }
 
@@ -196,8 +210,9 @@ def _build_walls(walkable, tile_w, tile_h):
 
 def _make_zombies(positions, idx):
     t = min(idx / 10.0, 1.0)
-    weights = [max(0.2, 1.0 - t * 0.8), t * 0.4, t * 0.4]
-    types = ["basic", "fast", "tank"]
+    ranged_w = min(t * 0.3, 0.25) if idx >= 3 else 0.0
+    weights = [max(0.15, 1.0 - t * 0.8 - ranged_w), t * 0.35, t * 0.35, ranged_w]
+    types = ["basic", "fast", "tank", "ranged"]
     return [
         {"tile": list(pos), "type": random.choices(types, weights=weights, k=1)[0]}
         for pos in positions
@@ -224,5 +239,6 @@ def _fallback(level_num):
         ],
         "coins": [],
         "zombies": [],
+        "traps": [],
         "instructions": [],
     }

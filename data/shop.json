@@ -66,6 +66,20 @@
       "costs": [100, 100, 100],
       "consumable": true,
       "grant": 2
+    },
+    {
+      "id": "dash_unlock",
+      "name": "Dash",
+      "description": "Shift to dash — evade anything. Brief invincibility.",
+      "max_level": 1,
+      "costs": [60]
+    },
+    {
+      "id": "dash_upgrade",
+      "name": "Dash II",
+      "description": "Longer dash range and shorter cooldown.",
+      "max_level": 2,
+      "costs": [80, 140]
     }
   ]
 }

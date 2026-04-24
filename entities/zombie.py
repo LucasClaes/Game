@@ -6,9 +6,10 @@ _PATH_INTERVAL = 0.45  # seconds between BFS recalculations
 
 # Visual style per zombie type
 _STYLE = {
-    "basic": {"color": (220, 60,  60),  "glow": (255, 80,  80),  "glow_r": 20, "shape": "rect"},
-    "fast":  {"color": (255, 140, 30),  "glow": (255, 170, 60),  "glow_r": 17, "shape": "diamond"},
-    "tank":  {"color": (160, 60,  220), "glow": (190, 90,  255), "glow_r": 26, "shape": "circle"},
+    "basic":  {"color": (220, 60,  60),  "glow": (255, 80,  80),  "glow_r": 20, "shape": "rect"},
+    "fast":   {"color": (255, 140, 30),  "glow": (255, 170, 60),  "glow_r": 17, "shape": "diamond"},
+    "tank":   {"color": (160, 60,  220), "glow": (190, 90,  255), "glow_r": 26, "shape": "circle"},
+    "ranged": {"color": (180, 80,  200), "glow": (200, 110, 255), "glow_r": 18, "shape": "diamond"},
 }
 
 
@@ -38,11 +39,14 @@ class Zombie:
         self._path: list = []
         self._path_timer: float = 0.0
         self._anim = 0.0
+        self._shoot_range = stats.get("shoot_range", 0)
+        self._shoot_cooldown = stats.get("shoot_cooldown", 2.0)
+        self._shoot_timer = self._shoot_cooldown
 
     def update(self, dt: float, player_pos: pygame.Vector2,
-               walls: list, tile_grid=None, tile_w: int = 30, tile_h: int = 20):
+               walls: list, tile_grid=None, tile_w: int = 30, tile_h: int = 20) -> list:
         if not self.alive:
-            return
+            return []
         self._hit_flash = max(0.0, self._hit_flash - dt)
         self._invincible = max(0.0, self._invincible - dt)
         self._anim += dt
@@ -54,7 +58,20 @@ class Zombie:
                 self._state = Zombie.CHASE
 
         if self._state == Zombie.IDLE:
-            return  # stand still until aggroed
+            return []
+
+        # Ranged zombie: stop and shoot when in range
+        if self.zombie_type == "ranged" and self._shoot_range > 0:
+            dist = (player_pos - self.pos).length()
+            if dist <= self._shoot_range:
+                self._shoot_timer -= dt
+                self.rect.center = (int(self.pos.x), int(self.pos.y))
+                if self._shoot_timer <= 0:
+                    self._shoot_timer = self._shoot_cooldown
+                    direction = (player_pos - self.pos).normalize()
+                    from entities.enemy_bullet import EnemyBullet
+                    return [EnemyBullet(self.pos, direction * 200, 1)]
+                return []
 
         self._path_timer -= dt
         if tile_grid is not None and (self._path_timer <= 0 or not self._path):
@@ -77,6 +94,7 @@ class Zombie:
             self._move_toward(player_pos, dt, walls)
 
         self.rect.center = (int(self.pos.x), int(self.pos.y))
+        return []
 
     def _depenetrate(self, walls: list):
         for wall in walls:

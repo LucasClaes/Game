@@ -20,6 +20,11 @@ class LevelCompleteScreen:
         self._coins_earned = kwargs.get("coins_earned", 0)
         self._level_num = kwargs.get("level_num", 0)
         self._selected = 0
+        try:
+            from systems.audio import audio
+            audio.play_music("levelcomplete")
+        except Exception:
+            pass
 
     def update(self, events, dt):
         for event in events:

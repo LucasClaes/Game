@@ -16,9 +16,11 @@ BULLET_DAMAGE_BASE = 15
 MELEE_DAMAGE_BASE = 25
 
 ZOMBIE_TYPES = {
-    "basic": {"hp": 60,  "speed": 90,  "damage": 1, "coin_drop": 5},
-    "fast":  {"hp": 35,  "speed": 175, "damage": 2, "coin_drop": 12},
-    "tank":  {"hp": 220, "speed": 50,  "damage": 3, "coin_drop": 25},
+    "basic":  {"hp": 60,  "speed": 90,  "damage": 1, "coin_drop": 5},
+    "fast":   {"hp": 35,  "speed": 175, "damage": 2, "coin_drop": 12},
+    "tank":   {"hp": 220, "speed": 50,  "damage": 3, "coin_drop": 25},
+    "ranged": {"hp": 45,  "speed": 55,  "damage": 1, "coin_drop": 18,
+               "shoot_range": 192, "shoot_cooldown": 2.0},
 }
 
 AGGRO_RADIUS       = 200   # px — zombie detection range
