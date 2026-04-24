@@ -1,22 +1,21 @@
-import asyncio
+import time
 import traceback
 import pygame
 
 
-async def main():
+def main():
     try:
         from core.game import Game
         game = Game()
-        await game.run()
+        game.run()
     except Exception:
-        # Show the traceback on screen instead of going grey
         tb = traceback.format_exc()
         print(tb)
         try:
             screen = pygame.display.get_surface()
             if not screen:
                 pygame.init()
-                screen = pygame.display.set_mode((960, 640))
+                screen = pygame.display.set_mode((960, 640), pygame.FULLSCREEN | pygame.SCALED)
             screen.fill((30, 0, 0))
             font = pygame.font.Font(None, 20)
             lines = tb.replace("\t", "  ").split("\n")
@@ -26,12 +25,11 @@ async def main():
             pygame.display.flip()
         except Exception:
             pass
-        # Keep alive so the error stays visible
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return
-            await asyncio.sleep(0.1)
+            time.sleep(0.1)
 
 
-asyncio.run(main())
+main()
