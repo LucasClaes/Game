@@ -4,6 +4,7 @@
       "id": "damage",
       "name": "Sharper Blade",
       "description": "Increases melee and bullet damage by 20% per level",
+      "category": "stats",
       "max_level": 5,
       "costs": [50, 100, 175, 275, 400]
     },
@@ -11,6 +12,7 @@
       "id": "fire_rate",
       "name": "Swift Strikes",
       "description": "Reduces attack cooldown by 15-20% per level",
+      "category": "stats",
       "max_level": 5,
       "costs": [50, 100, 175, 275, 400]
     },
@@ -18,6 +20,7 @@
       "id": "speed",
       "name": "Running Shoes",
       "description": "Increases movement speed by 10% per level",
+      "category": "stats",
       "max_level": 5,
       "costs": [40, 80, 140, 220, 320]
     },
@@ -25,34 +28,55 @@
       "id": "health",
       "name": "Extra Life",
       "description": "Gain one extra life (starts with 3)",
+      "category": "stats",
       "max_level": 3,
       "costs": [75, 150, 250]
-    },
-    {
-      "id": "ranged_unlock",
-      "name": "Slingshot",
-      "description": "Unlocks ranged combat. Right-click to fire projectiles.",
-      "max_level": 1,
-      "costs": [200]
     },
     {
       "id": "armor",
       "name": "Armor Plates",
       "description": "Reduces damage taken by 20% per level (max 60%)",
+      "category": "stats",
       "max_level": 3,
       "costs": [100, 200, 350]
+    },
+    {
+      "id": "ranged_unlock",
+      "name": "Slingshot",
+      "description": "Unlocks ranged combat. Right-click to fire projectiles.",
+      "category": "abilities",
+      "max_level": 1,
+      "costs": [200]
     },
     {
       "id": "companion",
       "name": "Robot Companion",
       "description": "Orbiting robot that auto-attacks enemies within 180px",
+      "category": "abilities",
       "max_level": 2,
       "costs": [280, 500]
+    },
+    {
+      "id": "dash_unlock",
+      "name": "Dash",
+      "description": "Shift to dash — evade anything. Brief invincibility.",
+      "category": "abilities",
+      "max_level": 1,
+      "costs": [60]
+    },
+    {
+      "id": "dash_upgrade",
+      "name": "Dash II",
+      "description": "Longer dash range and shorter cooldown.",
+      "category": "abilities",
+      "max_level": 2,
+      "costs": [80, 140]
     },
     {
       "id": "bombs",
       "name": "Bomb Pack",
       "description": "3 bombs (Q key) — damages all enemies within 200px for 150",
+      "category": "items",
       "max_level": 3,
       "costs": [75, 75, 75],
       "consumable": true,
@@ -62,24 +86,11 @@
       "id": "shields",
       "name": "Energy Shield",
       "description": "2 shields (E key) — absorbs all damage for 5 seconds",
+      "category": "items",
       "max_level": 3,
       "costs": [100, 100, 100],
       "consumable": true,
       "grant": 2
-    },
-    {
-      "id": "dash_unlock",
-      "name": "Dash",
-      "description": "Shift to dash — evade anything. Brief invincibility.",
-      "max_level": 1,
-      "costs": [60]
-    },
-    {
-      "id": "dash_upgrade",
-      "name": "Dash II",
-      "description": "Longer dash range and shorter cooldown.",
-      "max_level": 2,
-      "costs": [80, 140]
     }
   ]
 }

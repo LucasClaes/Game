@@ -11,7 +11,7 @@ class LevelCompleteScreen:
         self._player_data = None
         self._coins_earned = 0
         self._level_num = 0
-        self._buttons = ["CONTINUE", "SHOP"]
+        self._buttons = ["CONTINUE", "SHOP", "MAIN MENU"]
         self._selected = 0
         self._btn_rects = []
 
@@ -54,6 +54,10 @@ class LevelCompleteScreen:
         elif label == "SHOP":
             self._sm.switch_to(GameState.SHOP, player_data=self._player_data,
                                from_state="LEVEL_COMPLETE", level_num=next_level)
+        elif label == "MAIN MENU":
+            from core.save import write_save
+            write_save(self._player_data)
+            self._sm.switch_to(GameState.MAIN_MENU, player_data=self._player_data)
 
     def draw(self, surface: pygame.Surface):
         surface.fill((5, 20, 10))

@@ -34,6 +34,7 @@ class PlayingScreen:
         self._flash_color = (200, 0, 0)
         self._was_swinging = False
         self._trap_timer = 0.0
+        self._pause_btns: dict = {}
 
     def on_enter(self, **kwargs):
         self._player_data = kwargs.get("player_data")
@@ -96,11 +97,16 @@ class PlayingScreen:
         for event in events:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    self._paused = not self._paused
+                    self._toggle_pause()
                 elif event.key == pygame.K_q and not self._paused:
                     self._use_bomb()
                 elif event.key == pygame.K_e and not self._paused:
                     self._use_shield()
+            if self._paused and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if self._pause_btns.get("resume") and self._pause_btns["resume"].collidepoint(event.pos):
+                    self._toggle_pause()
+                elif self._pause_btns.get("menu") and self._pause_btns["menu"].collidepoint(event.pos):
+                    self._go_to_main_menu()
 
         if self._paused:
             return
@@ -246,21 +252,22 @@ class PlayingScreen:
                 self._sfx('coin')
                 self._particles.emit(coin.rect.centerx, coin.rect.centery, 5, (255, 215, 0))
 
-        # Trap damage (1 damage every 1.5s while standing on a trap)
+        # Trap damage: timer only ticks while on a trap, resets when off
         if self._level.trap_rects:
-            self._trap_timer += dt
-            if self._trap_timer >= 1.5:
+            on_trap = any(self._player.rect.colliderect(tr) for tr in self._level.trap_rects)
+            if on_trap:
+                self._trap_timer += dt
+                if self._trap_timer >= 1.5:
+                    self._trap_timer = 0.0
+                    died = self._player.take_damage(1)
+                    if died:
+                        self._on_player_died()
+                        return
+                    self._sfx('player_hurt')
+                    self._flash_timer = 0.25
+                    self._flash_color = (200, 80, 0)
+            else:
                 self._trap_timer = 0.0
-                for tr in self._level.trap_rects:
-                    if self._player.rect.colliderect(tr):
-                        died = self._player.take_damage(1)
-                        if died:
-                            self._on_player_died()
-                            return
-                        self._sfx('player_hurt')
-                        self._flash_timer = 0.25
-                        self._flash_color = (200, 80, 0)
-                        break
 
         # Zombie contact damage
         for zombie in self._level.zombies:
@@ -292,6 +299,24 @@ class PlayingScreen:
             self._sfx('level_up')
 
         self._camera.update(self._player.pos, self._level.pixel_w, self._level.pixel_h)
+
+    def _toggle_pause(self):
+        self._paused = not self._paused
+        try:
+            from systems.audio import audio
+            import pygame as _pg
+            if self._paused:
+                audio.fade_to_vol(0.0, 0.4, pause_at_zero=True)
+            else:
+                _pg.mixer.music.unpause()
+                vol = self._player_data.get("music_vol", 0.4) if self._player_data else 0.4
+                audio.fade_to_vol(vol, 0.4)
+        except Exception:
+            pass
+
+    def _go_to_main_menu(self):
+        from core.state_machine import GameState
+        self._sm.switch_to(GameState.MAIN_MENU, player_data=self._player_data)
 
     def _sfx(self, name: str):
         try:
@@ -420,12 +445,29 @@ class PlayingScreen:
         surface.blit(get_scanlines(SCREEN_W, SCREEN_H), (0, 0))
 
     def _draw_pause(self, surface: pygame.Surface):
+        from core.settings import BLUE, DARK_GRAY
         overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 140))
+        overlay.fill((0, 0, 0, 150))
         surface.blit(overlay, (0, 0))
+
         msg = self._title.render("PAUSED", True, WHITE)
-        surface.blit(msg, (SCREEN_W // 2 - msg.get_width() // 2,
-                           SCREEN_H // 2 - msg.get_height() // 2))
-        hint = self._font.render("Press ESC to resume", True, (180, 180, 180))
-        surface.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2,
-                            SCREEN_H // 2 + 60))
+        surface.blit(msg, (SCREEN_W // 2 - msg.get_width() // 2, SCREEN_H // 2 - 110))
+
+        btn_w, btn_h = 220, 50
+        bx = SCREEN_W // 2 - btn_w // 2
+        resume_rect = pygame.Rect(bx, SCREEN_H // 2 - 20, btn_w, btn_h)
+        menu_rect   = pygame.Rect(bx, SCREEN_H // 2 + 44, btn_w, btn_h)
+        self._pause_btns = {"resume": resume_rect, "menu": menu_rect}
+
+        for rect, label, color in [
+            (resume_rect, "RESUME",    BLUE),
+            (menu_rect,   "MAIN MENU", DARK_GRAY),
+        ]:
+            pygame.draw.rect(surface, color, rect, border_radius=8)
+            pygame.draw.rect(surface, WHITE, rect, 2, border_radius=8)
+            t = self._big.render(label, True, WHITE)
+            surface.blit(t, (rect.centerx - t.get_width() // 2,
+                             rect.centery - t.get_height() // 2))
+
+        hint = self._font.render("ESC to resume", True, (120, 120, 140))
+        surface.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, SCREEN_H // 2 + 108))
