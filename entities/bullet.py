@@ -4,10 +4,12 @@ import pygame
 class Bullet:
     RADIUS = 4
 
-    def __init__(self, pos: pygame.Vector2, vel: pygame.Vector2, damage: int):
+    def __init__(self, pos: pygame.Vector2, vel: pygame.Vector2, damage: int, pierce: int = 0):
         self.pos = pygame.Vector2(pos)
         self.vel = pygame.Vector2(vel)
         self.damage = damage
+        self.pierce = pierce
+        self.pierce_hit: set = set()
         self.alive = True
         self.rect = pygame.Rect(0, 0, self.RADIUS * 2, self.RADIUS * 2)
         self.rect.center = (int(self.pos.x), int(self.pos.y))

@@ -1,6 +1,19 @@
+import json
 import math
+import os
 import pygame
 from core.settings import SCREEN_W, SCREEN_H, WHITE, YELLOW, DARK_GRAY, BLUE
+
+_GEAR_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "gear.json")
+_SLOTS = ["helm", "chest", "boots", "gloves"]
+
+def _load_gear_names() -> dict:
+    try:
+        with open(_GEAR_PATH) as f:
+            raw = json.load(f)
+        return {g["id"]: g["name"] for g in raw["gear"]}
+    except Exception:
+        return {}
 
 
 class MainMenuScreen:
@@ -97,6 +110,40 @@ class MainMenuScreen:
                 hs = self._font.render(f"Best: Level {best_lv}  |  {best_c} coins", True, (180, 160, 100))
                 surface.blit(hs, (SCREEN_W // 2 - hs.get_width() // 2, y_info + 22))
 
+            self._draw_gear_panel(surface, y_info + 50)
+
         # Controls hint
         hint = self._font.render("WASD/Arrows: Move   LMB/Space: Melee   RMB: Shoot   Shift: Dash", True, (100, 100, 120))
         surface.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, SCREEN_H - 36))
+
+    def _draw_gear_panel(self, surface: pygame.Surface, y: int):
+        gear_names = _load_gear_names()
+        equipped = self._player_data.get("gear", {})
+        slot_labels = {"helm": "HELM", "chest": "CHEST", "boots": "BOOTS", "gloves": "GLOVES"}
+
+        card_w, card_h = 68, 44
+        gap = 10
+        total_w = len(_SLOTS) * card_w + (len(_SLOTS) - 1) * gap
+        x0 = SCREEN_W // 2 - total_w // 2
+
+        for i, slot in enumerate(_SLOTS):
+            cx = x0 + i * (card_w + gap)
+            gid = equipped.get(slot)
+            bg = (25, 35, 55) if gid else (20, 20, 30)
+            border = (80, 140, 200) if gid else (50, 50, 65)
+            pygame.draw.rect(surface, bg, (cx, y, card_w, card_h), border_radius=4)
+            pygame.draw.rect(surface, border, (cx, y, card_w, card_h), 1, border_radius=4)
+
+            label_s = self._font.render(slot_labels[slot], True, (80, 90, 110))
+            surface.blit(label_s, (cx + card_w // 2 - label_s.get_width() // 2, y + 3))
+
+            name = gear_names.get(gid, "—") if gid else "—"
+            name_color = YELLOW if gid else (55, 55, 70)
+            name_s = self._font.render(name, True, name_color)
+            # Scale down if too wide
+            if name_s.get_width() > card_w - 4:
+                scale = (card_w - 4) / name_s.get_width()
+                name_s = pygame.transform.smoothscale(
+                    name_s, (int(name_s.get_width() * scale), int(name_s.get_height() * scale))
+                )
+            surface.blit(name_s, (cx + card_w // 2 - name_s.get_width() // 2, y + 24))

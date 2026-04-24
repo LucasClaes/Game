@@ -18,7 +18,7 @@ class Zombie:
     IDLE  = 0
     CHASE = 1
 
-    def __init__(self, tile_x: int, tile_y: int, zombie_type: str = "basic"):
+    def __init__(self, tile_x: int, tile_y: int, zombie_type: str = "basic", elite: bool = False):
         stats = ZOMBIE_TYPES.get(zombie_type, ZOMBIE_TYPES["basic"])
         self.pos = pygame.Vector2(
             tile_x * TILE_SIZE + TILE_SIZE // 2,
@@ -30,6 +30,12 @@ class Zombie:
         self.damage = stats["damage"]
         self.coin_drop = stats["coin_drop"]
         self.zombie_type = zombie_type
+        self.elite = elite
+        if elite:
+            self.hp = self.hp * 2
+            self.max_hp = self.hp
+            self.speed *= 1.3
+            self.coin_drop = 3
         self.rect = pygame.Rect(0, 0, self.SIZE, self.SIZE)
         self.rect.center = (int(self.pos.x), int(self.pos.y))
         self.alive = True
@@ -179,6 +185,11 @@ class Zombie:
             pygame.draw.circle(surface, (255, 230, 230), (cx + 5, cy - 4), 3)
             pygame.draw.circle(surface, (60, 0, 0), (cx - 5, cy - 4), 1)
             pygame.draw.circle(surface, (60, 0, 0), (cx + 5, cy - 4), 1)
+
+        # Elite outline
+        if self.elite:
+            elite_r = pygame.Rect(cx - half - 3, cy - half - 3, self.SIZE + 6, self.SIZE + 6)
+            pygame.draw.rect(surface, (255, 220, 0), elite_r, 2, border_radius=7)
 
         # HP bar
         bar_w = self.SIZE + 4

@@ -8,7 +8,7 @@ class HUD:
         self._big = big_font
 
     def draw(self, surface: pygame.Surface, player, level, total_coins: int,
-             player_data: dict = None, boss=None):
+             player_data: dict = None, boss=None, combo: int = 0):
         self._draw_hp(surface, player)
         self._draw_lives(surface, player)
         self._draw_coins(surface, level)
@@ -18,6 +18,8 @@ class HUD:
             self._draw_consumables(surface, player_data)
         if boss and boss.alive:
             self._draw_boss_bar(surface, boss)
+        if combo >= 3:
+            self._draw_combo(surface, combo)
 
     def _draw_hp(self, surface, player):
         bar_w = 140
@@ -73,6 +75,12 @@ class HUD:
         if shields > 0:
             s = self._font.render(f"E: Shield ×{shields}", True, CYAN)
             surface.blit(s, (12, y))
+
+    def _draw_combo(self, surface, combo: int):
+        mult = 1.0 + (combo // 5) * 0.5
+        text = f"x{mult:.1f} COMBO  ({combo} kills)"
+        s = self._font.render(text, True, (255, 160, 30))
+        surface.blit(s, (SCREEN_W // 2 - s.get_width() // 2, 32))
 
     def _draw_boss_bar(self, surface, boss):
         bar_w = 400

@@ -1,4 +1,6 @@
+import json
 import math
+import os
 import pygame
 from core.settings import (
     TILE_SIZE, PLAYER_SPEED_BASE, PLAYER_HP_BASE, PLAYER_LIVES_BASE,
@@ -11,6 +13,17 @@ from entities.bullet import Bullet
 _PLAYER_COLOR   = (74,  144, 226)
 _PLAYER_RING    = (160, 210, 255)
 _PLAYER_RADIUS  = 13
+
+_GEAR_DEFS: dict | None = None
+
+def _load_gear_defs() -> dict:
+    global _GEAR_DEFS
+    if _GEAR_DEFS is None:
+        path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "gear.json")
+        with open(path) as f:
+            raw = json.load(f)
+        _GEAR_DEFS = {g["id"]: g for g in raw["gear"]}
+    return _GEAR_DEFS
 
 
 class Player:
@@ -59,6 +72,45 @@ class Player:
         self.lives = PLAYER_LIVES_BASE + hp
         self.max_lives = self.lives
 
+        self.bullet_pierce = False
+
+        # Apply gear bonuses
+        gear_defs = _load_gear_defs()
+        for gid in pd.get("gear", {}).values():
+            piece = gear_defs.get(gid)
+            if not piece:
+                continue
+            stat, val = piece["stat"], piece["value"]
+            if stat == "bonus_hp":
+                self.max_hp += int(val)
+            elif stat == "bonus_armor":
+                self.damage_reduction = min(self.damage_reduction + val, 0.60)
+            elif stat == "bonus_melee":
+                self.melee_damage = int(self.melee_damage * (1 + val))
+            elif stat == "bonus_ranged":
+                self.bullet_damage = int(self.bullet_damage * (1 + val))
+            elif stat == "bonus_speed":
+                self.speed *= (1 + val)
+            elif stat == "bonus_firerate":
+                self.swing_cooldown *= (1 - val)
+                self.shoot_cooldown *= (1 - val)
+            elif stat == "bonus_dash":
+                self.dash_cooldown *= (1 - val)
+        self.hp = self.max_hp
+
+        # Apply run perk stat bonuses
+        for perk_id in pd.get("run_perks", []):
+            if perk_id == "juggernaut":
+                self.max_hp += 1
+                self.speed *= 0.85
+            elif perk_id == "glass_cannon":
+                self.melee_damage = int(self.melee_damage * 1.4)
+                self.bullet_damage = int(self.bullet_damage * 1.4)
+                self.max_hp = max(1, self.max_hp - 1)
+            elif perk_id == "sharpshooter":
+                self.bullet_pierce = True
+        self.hp = self.max_hp
+
         self.swing_timer = 0.0
         self.swing_cooldown_timer = 0.0
         self.shoot_timer = 0.0
@@ -94,12 +146,17 @@ class Player:
             self.swing_timer = MELEE_DURATION
             self._hit_this_swing.clear()
 
+    @property
+    def is_dashing(self) -> bool:
+        return self._dash_timer > 0
+
     def _try_shoot(self, bullets: list):
         if not self.has_ranged or self.shoot_timer > 0:
             return
         direction = pygame.Vector2(1, 0).rotate(self.facing)
         spawn = self.pos + direction * (_PLAYER_RADIUS + 6)
-        bullets.append(Bullet(spawn, direction * BULLET_SPEED, self.bullet_damage))
+        pierce = 1 if self.bullet_pierce else 0
+        bullets.append(Bullet(spawn, direction * BULLET_SPEED, self.bullet_damage, pierce=pierce))
         self.shoot_timer = self.shoot_cooldown
 
     def use_bomb(self) -> bool:

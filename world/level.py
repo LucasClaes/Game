@@ -52,6 +52,8 @@ class Level:
         self.exit_requires_all_coins = True
         self.instructions: list[tuple] = []
         self.trap_rects: list[pygame.Rect] = []
+        self.crate_tiles: list[tuple] = []
+        self.barrel_tiles: list[tuple] = []
         self.tile_w = 30
         self.tile_h = 20
         self.tile_grid: list[list[bool]] = []
@@ -126,12 +128,16 @@ class Level:
             level.coins.append(Coin(c[0], c[1]))
         for z in raw.get("zombies", []):
             tile = z["tile"]
-            level.zombies.append(Zombie(tile[0], tile[1], z.get("type", "basic")))
+            level.zombies.append(Zombie(tile[0], tile[1], z.get("type", "basic"),
+                                        elite=z.get("elite", False)))
 
         for t in raw.get("traps", []):
             level.trap_rects.append(pygame.Rect(
                 t[0] * TILE_SIZE, t[1] * TILE_SIZE, TILE_SIZE, TILE_SIZE
             ))
+
+        level.crate_tiles = [(c[0], c[1]) for c in raw.get("crates", [])]
+        level.barrel_tiles = [(b[0], b[1]) for b in raw.get("barrels", [])]
 
         ex = raw["exit"]
         level.exit_rect = pygame.Rect(ex[0] * TILE_SIZE, ex[1] * TILE_SIZE,

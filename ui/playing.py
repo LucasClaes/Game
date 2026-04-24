@@ -1,4 +1,7 @@
+import json
 import math
+import os
+import random
 import pygame
 from core.settings import SCREEN_W, SCREEN_H, WHITE, BLACK, YELLOW, RED, DARK_GRAY, CHAIN_AGGRO_RADIUS
 from entities.player import Player
@@ -8,6 +11,20 @@ from systems.camera import Camera
 from systems.particles import ParticleSystem
 from ui.hud import HUD
 from ui.minimap import Minimap
+
+_GEAR_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "gear.json")
+_GEAR_DEFS_CACHE: dict | None = None
+
+def _get_gear_defs() -> dict:
+    global _GEAR_DEFS_CACHE
+    if _GEAR_DEFS_CACHE is None:
+        try:
+            with open(_GEAR_PATH) as f:
+                raw = json.load(f)
+            _GEAR_DEFS_CACHE = {g["id"]: g for g in raw["gear"]}
+        except Exception:
+            _GEAR_DEFS_CACHE = {}
+    return _GEAR_DEFS_CACHE
 
 
 class PlayingScreen:
@@ -35,6 +52,23 @@ class PlayingScreen:
         self._was_swinging = False
         self._trap_timer = 0.0
         self._pause_btns: dict = {}
+        # Gear / crates / barrels
+        self._crates = []
+        self._barrels = []
+        self._pickup_text = ""
+        self._pickup_timer = 0.0
+        # Combo
+        self._combo = 0
+        self._combo_timer = 0.0
+        # Perk runtime state
+        self._iron_will_active = False
+        self._second_wind_used = False
+        self._vampiric_kills = 0
+        self._adrenaline_timer = 0.0
+        self._adrenaline_active = False
+        self._overclock_timer = 0.0
+        self._overclock_active = False
+        self._prev_dashing = False
 
     def on_enter(self, **kwargs):
         self._player_data = kwargs.get("player_data")
@@ -75,6 +109,12 @@ class PlayingScreen:
             for i in range(self._player.companion_count)
         ]
 
+        # Instantiate crates and barrels from level data
+        from entities.crate import LootCrate
+        from entities.barrel import Barrel
+        self._crates = [LootCrate(tx, ty) for tx, ty in self._level.crate_tiles]
+        self._barrels = [Barrel(tx, ty) for tx, ty in self._level.barrel_tiles]
+
         self._bullets = []
         self._enemy_bullets = []
         self._coins_earned_this_run = 0
@@ -84,11 +124,59 @@ class PlayingScreen:
         self._flash_timer = 0.0
         self._was_swinging = False
         self._trap_timer = 0.0
+        self._pickup_text = ""
+        self._pickup_timer = 0.0
+
+        # Combo reset
+        self._combo = 0
+        self._combo_timer = 0.0
+
+        # Perk runtime reset per level
+        perks = self._player_data.get("run_perks", [])
+        self._iron_will_active = "iron_will" in perks
+        self._second_wind_used = False
+        self._vampiric_kills = 0
+        self._adrenaline_timer = 0.0
+        self._adrenaline_active = False
+        self._overclock_timer = 0.0
+        self._overclock_active = False
+        self._prev_dashing = False
+
         try:
             from systems.audio import audio
             audio.play_music("combat")
         except Exception:
             pass
+
+    def _perks(self) -> list:
+        return self._player_data.get("run_perks", []) if self._player_data else []
+
+    def _take_player_damage(self, amount: int) -> bool:
+        perks = self._perks()
+        if "iron_will" in perks and self._iron_will_active:
+            self._iron_will_active = False
+            return False
+        died = self._player.take_damage(amount)
+        if died and "second_wind" in perks and not self._second_wind_used:
+            self._second_wind_used = True
+            self._player.hp = 1
+            self._player.invincible_timer = self._player.INVINCIBLE_DURATION
+            self._sfx("level_up")
+            self._flash_timer = 0.5
+            self._flash_color = (100, 220, 100)
+            return False
+        if not died and self._player.invincible_timer < self._player.INVINCIBLE_DURATION:
+            # damage was applied
+            self._on_player_hurt(perks)
+        return died
+
+    def _on_player_hurt(self, perks: list):
+        if "adrenaline" in perks and not self._adrenaline_active:
+            self._adrenaline_active = True
+            self._adrenaline_timer = 8.0
+            self._player.speed *= 1.15
+        self._combo = 0
+        self._combo_timer = 0.0
 
     def update(self, events, dt):
         if self._player is None or self._level is None:
@@ -112,6 +200,7 @@ class PlayingScreen:
             return
 
         self._flash_timer = max(0.0, self._flash_timer - dt)
+        self._pickup_timer = max(0.0, self._pickup_timer - dt)
 
         if self._complete_delay > 0:
             self._complete_delay -= dt
@@ -119,20 +208,67 @@ class PlayingScreen:
                 self._finish_level()
             return
 
+        # Perk timers
+        perks = self._perks()
+        if self._adrenaline_active:
+            self._adrenaline_timer -= dt
+            if self._adrenaline_timer <= 0:
+                self._adrenaline_active = False
+                self._player.speed /= 1.15
+
+        if self._overclock_active:
+            self._overclock_timer -= dt
+            if self._overclock_timer <= 0:
+                self._overclock_active = False
+                self._player.swing_cooldown /= 0.70
+                self._player.shoot_cooldown /= 0.70
+
+        # Combo timer decay
+        if self._combo_timer > 0:
+            self._combo_timer -= dt
+            if self._combo_timer <= 0:
+                self._combo = 0
+
         keys = pygame.key.get_pressed()
         prev_bullet_count = len(self._bullets)
         self._player.handle_input(keys, events, self._bullets, self._camera.offset)
         if len(self._bullets) > prev_bullet_count:
-            self._sfx('shoot')
+            self._sfx("shoot")
 
         swing_now = self._player.is_swinging
         if swing_now and not self._was_swinging:
-            self._sfx('melee')
+            self._sfx("melee")
         self._was_swinging = swing_now
+
+        # Overclock: detect dash start
+        dashing_now = self._player.is_dashing
+        if dashing_now and not self._prev_dashing and "overclock" in perks and not self._overclock_active:
+            self._overclock_active = True
+            self._overclock_timer = 6.0
+            self._player.swing_cooldown *= 0.70
+            self._player.shoot_cooldown *= 0.70
+        self._prev_dashing = dashing_now
 
         self._player.update(dt, keys, self._level.walls)
         self._level.update(dt)
         self._particles.update(dt)
+
+        # Update crates
+        for crate in self._crates:
+            crate.update(dt)
+            if crate.check_pickup(self._player.rect):
+                self._open_crate(crate)
+        self._crates = [c for c in self._crates if c.alive]
+
+        # Magnet perk: auto-collect nearby coins
+        if "magnet" in perks:
+            magnet_rect = self._player.rect.inflate(128, 128)
+            for coin in self._level.coins:
+                if not coin.collected and magnet_rect.colliderect(coin.rect):
+                    coin.collected = True
+                    self._award_coins(10)
+                    self._sfx("coin")
+                    self._particles.emit(coin.rect.centerx, coin.rect.centery, 5, (255, 215, 0))
 
         # Update zombies
         for zombie in self._level.zombies:
@@ -152,9 +288,13 @@ class PlayingScreen:
             if not self._boss.alive:
                 self._award_coins(self._boss.coins)
                 self._level._force_open = True
-                self._sfx('boss_roar')
+                self._sfx("boss_roar")
                 self._flash_timer = 0.6
                 self._flash_color = (255, 120, 0)
+                # Guaranteed crate on boss kill
+                from entities.crate import LootCrate
+                bc = LootCrate.from_pixel(self._boss.pos.x, self._boss.pos.y)
+                self._crates.append(bc)
 
         # Update enemy bullets
         for eb in self._enemy_bullets:
@@ -164,17 +304,17 @@ class PlayingScreen:
         # Enemy bullet vs player
         for eb in self._enemy_bullets:
             if eb.rect.colliderect(self._player.rect):
-                died = self._player.take_damage(eb.damage)
+                died = self._take_player_damage(eb.damage)
                 eb.alive = False
                 if died:
                     self._on_player_died()
                     return
                 else:
-                    self._sfx('player_hurt')
+                    self._sfx("player_hurt")
                     self._flash_timer = 0.25
                     self._flash_color = (200, 0, 0)
 
-        # Update companion bullets (added to self._bullets for unified collision)
+        # Update companion bullets
         targets = list(self._level.zombies) + ([self._boss] if self._boss and self._boss.alive else [])
         for c in self._companions:
             new_bullets = c.update(targets, dt)
@@ -185,18 +325,39 @@ class PlayingScreen:
             b.update(dt, self._level.walls, self._level.pixel_w, self._level.pixel_h)
         self._bullets = [b for b in self._bullets if b.alive]
 
-        # Bullet vs zombie collisions
+        # Bullet vs barrel
+        for barrel in self._barrels:
+            if not barrel.alive:
+                continue
+            for bullet in self._bullets:
+                if not bullet.alive:
+                    continue
+                if bullet.rect.colliderect(barrel.rect):
+                    bullet.alive = False
+                    coins = barrel.hit()
+                    self._award_coins(coins)
+                    self._sfx("enemy_die")
+                    self._particles.emit(barrel.rect.centerx, barrel.rect.centery, 6, (160, 90, 30))
+                    break
+        self._barrels = [b for b in self._barrels if b.alive]
+
+        # Bullet vs zombie collisions (pierce-aware)
         for zombie in self._level.zombies:
             for bullet in self._bullets:
                 if not bullet.alive:
                     continue
+                zid = id(zombie)
+                if zid in bullet.pierce_hit:
+                    continue
                 if bullet.rect.colliderect(zombie.rect):
-                    bullet.alive = False
+                    bullet.pierce_hit.add(zid)
+                    if bullet.pierce <= 0:
+                        bullet.alive = False
+                    else:
+                        bullet.pierce -= 1
                     killed = zombie.take_damage(bullet.damage)
                     if killed:
-                        self._award_coins(zombie.coin_drop)
-                        self._sfx('enemy_die')
-                        self._particles.emit(zombie.pos.x, zombie.pos.y, 8, (200, 60, 60))
+                        self._on_zombie_killed(zombie)
                     else:
                         self._chain_aggro(zombie)
 
@@ -211,9 +372,24 @@ class PlayingScreen:
                     if killed:
                         self._award_coins(self._boss.coins)
                         self._level._force_open = True
-                        self._sfx('boss_roar')
+                        self._sfx("boss_roar")
                         self._flash_timer = 0.6
                         self._flash_color = (255, 120, 0)
+                        from entities.crate import LootCrate
+                        bc = LootCrate.from_pixel(self._boss.pos.x, self._boss.pos.y)
+                        self._crates.append(bc)
+
+        # Melee vs barrels
+        if self._player.is_swinging:
+            hb = self._player.get_melee_hitbox()
+            for barrel in self._barrels:
+                if not barrel.alive:
+                    continue
+                if hb.colliderect(barrel.rect):
+                    coins = barrel.hit()
+                    self._award_coins(coins)
+                    self._sfx("enemy_die")
+                    self._particles.emit(barrel.rect.centerx, barrel.rect.centery, 6, (160, 90, 30))
 
         # Melee vs zombies
         if self._player.is_swinging:
@@ -226,9 +402,7 @@ class PlayingScreen:
                     killed = zombie.take_damage(self._player.melee_damage)
                     self._chain_aggro(zombie)
                     if killed:
-                        self._award_coins(zombie.coin_drop)
-                        self._sfx('enemy_die')
-                        self._particles.emit(zombie.pos.x, zombie.pos.y, 8, (200, 60, 60))
+                        self._on_zombie_killed(zombie)
             # Melee vs boss
             if self._boss and self._boss.alive and id(self._boss) not in self._player._hit_this_swing:
                 if hb.colliderect(self._boss.rect):
@@ -237,33 +411,37 @@ class PlayingScreen:
                     if killed:
                         self._award_coins(self._boss.coins)
                         self._level._force_open = True
-                        self._sfx('boss_roar')
+                        self._sfx("boss_roar")
                         self._flash_timer = 0.6
                         self._flash_color = (255, 120, 0)
+                        from entities.crate import LootCrate
+                        bc = LootCrate.from_pixel(self._boss.pos.x, self._boss.pos.y)
+                        self._crates.append(bc)
 
         # Remove dead zombies
         self._level.zombies = [z for z in self._level.zombies if z.alive]
+        self._barrels = [b for b in self._barrels if b.alive]
 
-        # Coin collection
+        # Coin collection (normal proximity)
         for coin in self._level.coins:
             if not coin.collected and self._player.rect.colliderect(coin.rect):
                 coin.collected = True
                 self._award_coins(10)
-                self._sfx('coin')
+                self._sfx("coin")
                 self._particles.emit(coin.rect.centerx, coin.rect.centery, 5, (255, 215, 0))
 
-        # Trap damage: timer only ticks while on a trap, resets when off
+        # Trap damage
         if self._level.trap_rects:
             on_trap = any(self._player.rect.colliderect(tr) for tr in self._level.trap_rects)
             if on_trap:
                 self._trap_timer += dt
                 if self._trap_timer >= 1.5:
                     self._trap_timer = 0.0
-                    died = self._player.take_damage(1)
+                    died = self._take_player_damage(1)
                     if died:
                         self._on_player_died()
                         return
-                    self._sfx('player_hurt')
+                    self._sfx("player_hurt")
                     self._flash_timer = 0.25
                     self._flash_color = (200, 80, 0)
             else:
@@ -272,33 +450,87 @@ class PlayingScreen:
         # Zombie contact damage
         for zombie in self._level.zombies:
             if self._player.rect.colliderect(zombie.rect):
-                died = self._player.take_damage(zombie.damage)
+                died = self._take_player_damage(zombie.damage)
                 if died:
                     self._on_player_died()
                     return
                 else:
-                    self._sfx('player_hurt')
+                    self._sfx("player_hurt")
                     self._flash_timer = 0.25
                     self._flash_color = (200, 0, 0)
 
         # Boss contact damage
         if self._boss and self._boss.alive:
             if self._player.rect.colliderect(self._boss.rect):
-                died = self._player.take_damage(self._boss.damage)
+                died = self._take_player_damage(self._boss.damage)
                 if died:
                     self._on_player_died()
                     return
                 else:
-                    self._sfx('player_hurt')
+                    self._sfx("player_hurt")
                     self._flash_timer = 0.35
                     self._flash_color = (200, 0, 0)
 
         # Level complete check
         if self._level.is_complete(self._player.rect) and self._complete_delay == 0:
             self._complete_delay = 0.8
-            self._sfx('level_up')
+            self._sfx("level_up")
 
         self._camera.update(self._player.pos, self._level.pixel_w, self._level.pixel_h)
+
+    def _on_zombie_killed(self, zombie):
+        perks = self._perks()
+        self._award_coins(zombie.coin_drop)
+        self._sfx("enemy_die")
+        self._particles.emit(zombie.pos.x, zombie.pos.y, 8, (200, 60, 60))
+
+        # Combo
+        self._combo += 1
+        self._combo_timer = 4.0
+
+        # Vampiric
+        if "vampiric" in perks:
+            self._vampiric_kills += 1
+            if self._vampiric_kills >= 10:
+                self._vampiric_kills = 0
+                self._player.hp = min(self._player.hp + 1, self._player.max_hp)
+
+        # Explosive death
+        if "explosive_death" in perks:
+            for other in self._level.zombies:
+                if other is not zombie and other.alive:
+                    if (other.pos - zombie.pos).length() <= 80:
+                        other.take_damage(30)
+
+        # Bounty hunter: elite zombie always drops a crate
+        if "bounty_hunter" in perks and zombie.elite:
+            from entities.crate import LootCrate
+            self._crates.append(LootCrate.from_pixel(zombie.pos.x, zombie.pos.y))
+
+    def _open_crate(self, crate):
+        crate.alive = False
+        gear_defs = _get_gear_defs()
+        if not gear_defs:
+            return
+        equipped = self._player_data.get("gear", {})
+        slots = ["helm", "chest", "boots", "gloves"]
+
+        # Weight toward unequipped slots
+        unequipped = [g for g in gear_defs.values() if equipped.get(g["slot"]) != g["id"]]
+        pool = unequipped if unequipped else list(gear_defs.values())
+        piece = random.choice(pool)
+
+        if "gear" not in self._player_data:
+            self._player_data["gear"] = {}
+        self._player_data["gear"][piece["slot"]] = piece["id"]
+
+        from core.save import write_save
+        write_save(self._player_data)
+
+        self._pickup_text = f"Found: {piece['name']}!"
+        self._pickup_timer = 3.0
+        self._sfx("coin")
+        self._particles.emit(crate.rect.centerx, crate.rect.centery, 14, (255, 200, 50))
 
     def _toggle_pause(self):
         self._paused = not self._paused
@@ -340,15 +572,14 @@ class PlayingScreen:
             if math.hypot(z.pos.x - px, z.pos.y - py) < blast_r:
                 killed = z.take_damage(150)
                 if killed:
-                    self._award_coins(z.coin_drop)
-                    self._particles.emit(z.pos.x, z.pos.y, 12, (255, 140, 0))
+                    self._on_zombie_killed(z)
         if self._boss and self._boss.alive:
             if math.hypot(self._boss.pos.x - px, self._boss.pos.y - py) < blast_r:
                 killed = self._boss.take_damage(150)
                 if killed:
                     self._award_coins(self._boss.coins)
                     self._level._force_open = True
-                    self._sfx('boss_roar')
+                    self._sfx("boss_roar")
         self._level.zombies = [z for z in self._level.zombies if z.alive]
         self._flash_timer = 0.4
         self._flash_color = (255, 200, 50)
@@ -362,16 +593,22 @@ class PlayingScreen:
             write_save(self._player_data)
 
     def _award_coins(self, amount: int):
+        perks = self._perks()
+        if "lucky_coins" in perks and random.random() < 0.5:
+            amount *= 2
+        mult = 1.0 + (self._combo // 5) * 0.5
+        mult = min(mult, 3.0)
+        amount = int(amount * mult)
         self._coins_earned_this_run += amount
         self._player_data["coins"] += amount
         from core.save import write_save
         write_save(self._player_data)
 
     def _on_player_died(self):
-        self._sfx('player_hurt')
+        self._sfx("player_hurt")
         self._player.lives -= 1
         if self._player.lives <= 0:
-            self._sfx('game_over')
+            self._sfx("game_over")
             from core.state_machine import GameState
             self._sm.switch_to(GameState.GAME_OVER, player_data=self._player_data,
                                coins_earned=self._coins_earned_this_run)
@@ -391,6 +628,7 @@ class PlayingScreen:
 
         self._level.draw(surface, self._camera.offset, self._font)
 
+        # Traps
         for tr in self._level.trap_rects:
             dr = tr.move(-self._camera.offset.x, -self._camera.offset.y)
             pygame.draw.rect(surface, (110, 25, 15), dr)
@@ -398,6 +636,14 @@ class PlayingScreen:
             cx, cy = dr.centerx, dr.centery
             for ddx, ddy in ((0, -7), (0, 7), (-7, 0), (7, 0)):
                 pygame.draw.line(surface, (220, 80, 50), (cx, cy), (cx + ddx, cy + ddy), 2)
+
+        # Barrels
+        for barrel in self._barrels:
+            barrel.draw(surface, self._camera.offset)
+
+        # Crates
+        for crate in self._crates:
+            crate.draw(surface, self._camera.offset)
 
         self._particles.draw(surface, self._camera.offset)
 
@@ -419,8 +665,15 @@ class PlayingScreen:
         self._player.draw(surface, self._camera.offset)
 
         self._hud.draw(surface, self._player, self._level, len(self._level.coins),
-                       player_data=self._player_data, boss=self._boss)
+                       player_data=self._player_data, boss=self._boss, combo=self._combo)
         self._minimap.draw(surface, self._level, self._player, self._level.zombies)
+
+        # Crate pickup notification
+        if self._pickup_timer > 0 and self._pickup_text:
+            alpha = min(255, int(self._pickup_timer * 200))
+            s = self._big.render(self._pickup_text, True, (255, 215, 50))
+            s.set_alpha(alpha)
+            surface.blit(s, (SCREEN_W // 2 - s.get_width() // 2, SCREEN_H // 2 - 60))
 
         if self._paused:
             self._draw_pause(surface)
@@ -433,14 +686,12 @@ class PlayingScreen:
             surface.blit(msg, (SCREEN_W // 2 - msg.get_width() // 2,
                                SCREEN_H // 2 - msg.get_height() // 2))
 
-        # Screen flash overlay
         if self._flash_timer > 0:
             alpha = int(min(self._flash_timer * 200, 140))
             fl = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
             fl.fill((*self._flash_color, alpha))
             surface.blit(fl, (0, 0))
 
-        # CRT scanlines
         from systems.gfx import get_scanlines
         surface.blit(get_scanlines(SCREEN_W, SCREEN_H), (0, 0))
 

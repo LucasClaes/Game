@@ -1,0 +1,17 @@
+{
+  "slots": ["helm", "chest", "boots", "gloves"],
+  "gear": [
+    {"id": "iron_helm",      "slot": "helm",   "name": "Iron Helm",      "desc": "+1 max HP",             "stat": "bonus_hp",       "value": 1},
+    {"id": "crystal_helm",   "slot": "helm",   "name": "Crystal Helm",   "desc": "+20% damage reduction", "stat": "bonus_armor",    "value": 0.20},
+    {"id": "berserker_helm", "slot": "helm",   "name": "Berserker Helm", "desc": "+25% melee damage",     "stat": "bonus_melee",    "value": 0.25},
+    {"id": "leather_chest",  "slot": "chest",  "name": "Leather Chest",  "desc": "+15% damage reduction", "stat": "bonus_armor",    "value": 0.15},
+    {"id": "titan_chest",    "slot": "chest",  "name": "Titan Chest",    "desc": "+2 max HP",             "stat": "bonus_hp",       "value": 2},
+    {"id": "rogue_chest",    "slot": "chest",  "name": "Rogue Chest",    "desc": "+20% attack speed",     "stat": "bonus_firerate", "value": 0.20},
+    {"id": "swift_boots",    "slot": "boots",  "name": "Swift Boots",    "desc": "+20% move speed",       "stat": "bonus_speed",    "value": 0.20},
+    {"id": "ghost_boots",    "slot": "boots",  "name": "Ghost Boots",    "desc": "-25% dash cooldown",    "stat": "bonus_dash",     "value": 0.25},
+    {"id": "iron_boots",     "slot": "boots",  "name": "Iron Boots",     "desc": "+10% damage reduction", "stat": "bonus_armor",    "value": 0.10},
+    {"id": "combat_gloves",  "slot": "gloves", "name": "Combat Gloves",  "desc": "+20% melee damage",     "stat": "bonus_melee",    "value": 0.20},
+    {"id": "sniper_gloves",  "slot": "gloves", "name": "Sniper Gloves",  "desc": "+30% ranged damage",    "stat": "bonus_ranged",   "value": 0.30},
+    {"id": "swift_gloves",   "slot": "gloves", "name": "Swift Gloves",   "desc": "+15% attack speed",     "stat": "bonus_firerate", "value": 0.15}
+  ]
+}

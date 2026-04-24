@@ -137,6 +137,33 @@ def _attempt(level_num, idx, tile_w, tile_h, room_count):
     )
     zombie_positions = random.sample(zombie_candidates, zombie_count) if zombie_count > 0 else []
 
+    # Crates on floor tiles (20% chance depth 1+, 40% chance depth 3+)
+    used = set(coin_positions + trap_positions + zombie_positions)
+    crate_candidates = [
+        (tx, ty) for tx, ty in coin_candidates
+        if (tx, ty) not in used
+        and all(_mdist((tx, ty), e) >= 5 for e in exclude)
+    ]
+    crate_positions = []
+    if crate_candidates:
+        max_crates = 2 if idx >= 2 else 1
+        crate_chance = 0.40 if idx >= 2 else 0.20
+        if random.random() < crate_chance:
+            n = random.randint(1, min(max_crates, len(crate_candidates)))
+            crate_positions = random.sample(crate_candidates, n)
+            used.update(crate_positions)
+
+    # Barrels on floor tiles (0-3 per level)
+    barrel_candidates = [
+        (tx, ty) for tx, ty in coin_candidates
+        if (tx, ty) not in used
+        and all(_mdist((tx, ty), e) >= 3 for e in exclude)
+    ]
+    barrel_positions = []
+    if barrel_candidates:
+        n = min(random.randint(0, 3), len(barrel_candidates))
+        barrel_positions = random.sample(barrel_candidates, n)
+
     return {
         "id": level_num,
         "name": f"Depth {idx + 1}",
@@ -148,6 +175,8 @@ def _attempt(level_num, idx, tile_w, tile_h, room_count):
         "coins": [[cx, cy] for cx, cy in coin_positions],
         "zombies": _make_zombies(zombie_positions, idx),
         "traps": [[tx, ty] for tx, ty in trap_positions],
+        "crates": [[tx, ty] for tx, ty in crate_positions],
+        "barrels": [[tx, ty] for tx, ty in barrel_positions],
         "instructions": [],
     }
 
@@ -213,8 +242,13 @@ def _make_zombies(positions, idx):
     ranged_w = min(t * 0.3, 0.25) if idx >= 3 else 0.0
     weights = [max(0.15, 1.0 - t * 0.8 - ranged_w), t * 0.35, t * 0.35, ranged_w]
     types = ["basic", "fast", "tank", "ranged"]
+    elite_chance = 0.15 if idx >= 3 else 0.0
     return [
-        {"tile": list(pos), "type": random.choices(types, weights=weights, k=1)[0]}
+        {
+            "tile": list(pos),
+            "type": random.choices(types, weights=weights, k=1)[0],
+            "elite": random.random() < elite_chance,
+        }
         for pos in positions
     ]
 
@@ -240,5 +274,7 @@ def _fallback(level_num):
         "coins": [],
         "zombies": [],
         "traps": [],
+        "crates": [],
+        "barrels": [],
         "instructions": [],
     }

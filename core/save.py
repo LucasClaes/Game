@@ -20,6 +20,8 @@ _DEFAULT = {
     "best_coins": 0,
     "music_vol": 0.4,
     "sfx_vol": 1.0,
+    "gear": {},
+    "run_perks": [],
 }
 
 
@@ -28,6 +30,8 @@ def _merge(data: dict) -> dict:
     merged.update(data)
     merged["upgrades"] = dict(_DEFAULT["upgrades"])
     merged["upgrades"].update(data.get("upgrades", {}))
+    merged["gear"] = dict(data.get("gear", {}))
+    merged["run_perks"] = list(data.get("run_perks", []))
     return merged
 
 
