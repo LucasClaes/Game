@@ -1,0 +1,11 @@
+{
+  "challenges": [
+    {"id": "ironman",  "name": "Iron Man",     "desc": "No shop between levels",          "modifier": "no_shop",       "reward": 200},
+    {"id": "speedrun", "name": "Speed Demon",  "desc": "Complete each level in 3 minutes","modifier": "time_limit",    "reward": 150},
+    {"id": "pacifist", "name": "Pacifist",     "desc": "Reach exit with under 10 kills",  "modifier": "low_kills",     "reward": 175},
+    {"id": "fragile",  "name": "Glass Cannon", "desc": "Start with 1 max HP",             "modifier": "one_hp",        "reward": 300},
+    {"id": "swarm",    "name": "Swarm",        "desc": "Double zombie count each level",  "modifier": "double_zombies","reward": 250},
+    {"id": "no_dash",  "name": "Footslogger",  "desc": "Dash is disabled for the run",    "modifier": "no_dash",       "reward": 100},
+    {"id": "naked",    "name": "Naked Run",    "desc": "Gear bonuses are disabled",       "modifier": "no_gear",       "reward": 200}
+  ]
+}

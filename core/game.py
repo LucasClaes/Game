@@ -42,6 +42,8 @@ class Game:
         from ui.game_over import GameOverScreen
         from ui.level_complete import LevelCompleteScreen
         from ui.settings import SettingsScreen
+        from ui.achievements import AchievementsScreen
+        from ui.codex import CodexScreen
 
         args = (self.state_manager, font, big_font, title_font)
         self.state_manager.register(GameState.MAIN_MENU,      MainMenuScreen(*args))
@@ -50,6 +52,8 @@ class Game:
         self.state_manager.register(GameState.GAME_OVER,      GameOverScreen(*args))
         self.state_manager.register(GameState.LEVEL_COMPLETE, LevelCompleteScreen(*args))
         self.state_manager.register(GameState.SETTINGS,       SettingsScreen(*args))
+        self.state_manager.register(GameState.ACHIEVEMENTS,   AchievementsScreen(*args))
+        self.state_manager.register(GameState.CODEX,          CodexScreen(*args))
 
         self.state_manager.switch_to(GameState.MAIN_MENU, player_data=player_data)
 

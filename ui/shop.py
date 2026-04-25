@@ -119,6 +119,12 @@ class ShopScreen:
         from core.save import write_save
         write_save(self._player_data)
         self._set_feedback(f"Purchased: {upg['name']}!", True)
+        try:
+            from core.achievements import check_achievements
+            check_achievements(self._player_data, lambda _a: None)
+            write_save(self._player_data)
+        except Exception:
+            pass
 
     def _set_feedback(self, msg: str, success: bool):
         self._feedback = msg

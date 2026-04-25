@@ -72,9 +72,21 @@ class PlayingScreen:
         self._overclock_timer = 0.0
         self._overclock_active = False
         self._prev_dashing = False
+        # Challenge / difficulty
+        self._challenge_modifier: str | None = None
+        self._challenge_id: str | None = None
+        self._challenge_reward: int = 0
+        self._diff_coin_mult: float = 1.0
+        self._took_damage: bool = False
+        self._challenge_time_limit: float = 0.0
+        # Achievement popups
+        self._ach_popups: list = []
 
     def on_enter(self, **kwargs):
         self._player_data = kwargs.get("player_data")
+        self._challenge_modifier = kwargs.get("challenge_modifier", None)
+        self._challenge_id       = kwargs.get("challenge_id", None)
+        self._challenge_reward   = kwargs.get("challenge_reward", 0)
         level_index = self._player_data.get("current_level", 0)
 
         is_boss = level_index > 0 and level_index % 4 == 0
@@ -129,6 +141,8 @@ class PlayingScreen:
         self._trap_timer = 0.0
         self._pickup_text = ""
         self._pickup_timer = 0.0
+        self._took_damage = False
+        self._ach_popups = []
 
         # Combo reset
         self._combo = 0
@@ -147,6 +161,53 @@ class PlayingScreen:
         self._overclock_timer = 0.0
         self._overclock_active = False
         self._prev_dashing = False
+
+        # Apply difficulty multipliers
+        from core.settings import DIFFICULTIES
+        diff_idx = self._player_data.get("difficulty", 1)
+        diff = DIFFICULTIES[diff_idx]
+        self._diff_coin_mult = diff["coins"]
+        for z in self._level.zombies:
+            z.hp      = max(1, int(z.hp * diff["hp"]))
+            z.max_hp  = z.hp
+            z.speed  *= diff["speed"]
+            z.damage  = max(1, int(z.damage * diff["damage"]))
+        if self._boss:
+            self._boss.hp     = max(1, int(self._boss.hp * diff["hp"]))
+            self._boss.max_hp = self._boss.hp
+            self._boss.speed *= diff["speed"]
+
+        # Apply challenge modifier
+        mod = self._challenge_modifier
+        if mod == "one_hp":
+            self._player.max_hp = 1
+            self._player.hp = 1
+        elif mod == "no_dash":
+            self._player.dash_unlocked = False
+        elif mod == "no_gear":
+            # Rebuild player without gear bonuses
+            _pd_no_gear = dict(self._player_data)
+            _pd_no_gear["gear"] = {}
+            self._player = Player(
+                self._level.player_start[0],
+                self._level.player_start[1],
+                self._player_data.get("upgrades", {}),
+                player_data=_pd_no_gear,
+            )
+        elif mod == "double_zombies":
+            import random as _rnd
+            from entities.zombie import Zombie as _Z
+            existing = list(self._level.zombies)
+            new_z = []
+            for z in existing:
+                tx = int(z.pos.x // 32) + _rnd.randint(-3, 3)
+                ty = int(z.pos.y // 32) + _rnd.randint(-3, 3)
+                tx = max(1, min(self._level.tile_w - 2, tx))
+                ty = max(1, min(self._level.tile_h - 2, ty))
+                new_z.append(_Z(tx, ty, z.zombie_type))
+            self._level.zombies.extend(new_z)
+        elif mod == "time_limit":
+            self._challenge_time_limit = 180.0  # 3 minutes per level
 
         try:
             from systems.audio import audio
@@ -174,6 +235,7 @@ class PlayingScreen:
             self._flash_color = (100, 220, 100)
             return False
         if not died and self._player.invincible_timer >= self._player.INVINCIBLE_DURATION:
+            self._took_damage = True
             self._on_player_hurt(perks)
         return died
 
@@ -211,6 +273,18 @@ class PlayingScreen:
         self._elapsed += dt
         self._flash_timer = max(0.0, self._flash_timer - dt)
         self._pickup_timer = max(0.0, self._pickup_timer - dt)
+
+        # Achievement popup timers
+        for p in self._ach_popups:
+            p["timer"] -= dt
+        self._ach_popups = [p for p in self._ach_popups if p["timer"] > 0]
+
+        # Challenge: time limit per level
+        if self._challenge_modifier == "time_limit" and self._challenge_time_limit > 0:
+            self._challenge_time_limit -= dt
+            if self._challenge_time_limit <= 0:
+                self._on_player_died()
+                return
 
         for dn in self._damage_numbers:
             dn["timer"] -= dt
@@ -316,6 +390,8 @@ class PlayingScreen:
                 from entities.crate import LootCrate
                 bc = LootCrate.from_pixel(self._boss.pos.x, self._boss.pos.y)
                 self._crates.append(bc)
+                self._player_data["bosses_killed"] = self._player_data.get("bosses_killed", 0) + 1
+                self._run_achievements()
 
         # Update enemy bullets
         for eb in self._enemy_bullets:
@@ -403,6 +479,8 @@ class PlayingScreen:
                         from entities.crate import LootCrate
                         bc = LootCrate.from_pixel(self._boss.pos.x, self._boss.pos.y)
                         self._crates.append(bc)
+                        self._player_data["bosses_killed"] = self._player_data.get("bosses_killed", 0) + 1
+                        self._run_achievements()
 
         # Melee vs barrels
         if self._player.is_swinging:
@@ -445,6 +523,8 @@ class PlayingScreen:
                         from entities.crate import LootCrate
                         bc = LootCrate.from_pixel(self._boss.pos.x, self._boss.pos.y)
                         self._crates.append(bc)
+                        self._player_data["bosses_killed"] = self._player_data.get("bosses_killed", 0) + 1
+                        self._run_achievements()
 
         # Remove dead zombies
         self._level.zombies = [z for z in self._level.zombies if z.alive]
@@ -520,6 +600,8 @@ class PlayingScreen:
         self._award_coins(zombie.coin_drop)
         self._sfx("enemy_die")
         self._kill_count += 1
+        self._player_data["total_kills"] = self._player_data.get("total_kills", 0) + 1
+        self._run_achievements()
 
         _type_colors = {
             "fast": (255, 140, 30), "tank": (160, 60, 220),
@@ -590,8 +672,13 @@ class PlayingScreen:
             self._player_data["gear"] = {}
         self._player_data["gear"][piece["slot"]] = piece["id"]
 
+        found = self._player_data.setdefault("found_gear", [])
+        if piece["id"] not in found:
+            found.append(piece["id"])
+
         from core.save import write_save
         write_save(self._player_data)
+        self._run_achievements()
 
         self._pickup_text = f"Found: {piece['name']}!"
         self._pickup_timer = 3.0
@@ -640,6 +727,16 @@ class PlayingScreen:
         except Exception:
             pass
 
+    def _run_achievements(self, extra: dict | None = None):
+        from core.achievements import check_achievements
+        from core.save import write_save
+
+        def _popup(ach):
+            self._ach_popups.append({"text": f"ACHIEVEMENT: {ach['name']}", "timer": 3.5})
+
+        check_achievements(self._player_data, _popup, extra)
+        write_save(self._player_data)
+
     def _chain_aggro(self, hit_zombie):
         for z in self._level.zombies:
             if z is not hit_zombie and (z.pos - hit_zombie.pos).length() <= CHAIN_AGGRO_RADIUS:
@@ -680,6 +777,7 @@ class PlayingScreen:
 
     def _award_coins(self, amount: int):
         perks = self._perks()
+        amount = int(amount * self._diff_coin_mult)
         if "lucky_coins" in perks and random.random() < 0.5:
             amount *= 2
         mult = 1.0 + (self._combo // 5) * 0.5
@@ -704,11 +802,46 @@ class PlayingScreen:
 
     def _finish_level(self):
         from core.state_machine import GameState
+
+        # Pacifist challenge: block exit if too many kills
+        if self._challenge_modifier == "low_kills" and self._kill_count >= 10:
+            self._flash_timer = 0.6
+            self._flash_color = (200, 0, 0)
+            self._pickup_text = "Too many kills! (need <10)"
+            self._pickup_timer = 2.5
+            self._complete_delay = 0.0
+            return
+
+        # Update best level
+        level_num = self._level.number
+        if level_num + 1 > self._player_data.get("best_level", 0):
+            self._player_data["best_level"] = level_num + 1
+
+        # Per-level achievement checks
+        extra: dict = {}
+        if not self._took_damage:
+            extra["perfect_level"] = True
+        extra["fast_level"] = self._elapsed
+        self._run_achievements(extra)
+
+        # Challenge completion tracking
+        if self._challenge_id:
+            wins = self._player_data.setdefault("challenge_wins", {})
+            prev = wins.get(self._challenge_id, 0)
+            wins[self._challenge_id] = max(prev, level_num + 1)
+            self._player_data["coins"] = self._player_data.get("coins", 0) + self._challenge_reward
+
+        from core.save import write_save
+        write_save(self._player_data)
+
         self._sm.switch_to(GameState.LEVEL_COMPLETE,
                            player_data=self._player_data,
                            coins_earned=self._coins_earned_this_run,
                            level_num=self._level.number,
-                           kill_count=self._kill_count, elapsed=self._elapsed)
+                           kill_count=self._kill_count, elapsed=self._elapsed,
+                           challenge_modifier=self._challenge_modifier,
+                           challenge_id=self._challenge_id,
+                           challenge_reward=self._challenge_reward)
 
     def draw(self, surface: pygame.Surface):
         if self._level is None or self._player is None:
@@ -771,6 +904,33 @@ class PlayingScreen:
             s = self._big.render(self._pickup_text, True, (255, 215, 50))
             s.set_alpha(alpha)
             surface.blit(s, (SCREEN_W // 2 - s.get_width() // 2, SCREEN_H // 2 - 60))
+
+        # Achievement popups
+        for j, popup in enumerate(reversed(self._ach_popups)):
+            alpha = min(255, int(popup["timer"] * 120))
+            ps = self._font.render(popup["text"], True, YELLOW)
+            bg = pygame.Surface((ps.get_width() + 20, ps.get_height() + 8), pygame.SRCALPHA)
+            bg.fill((0, 0, 0, 160))
+            py = 8 + j * (ps.get_height() + 12)
+            bg.set_alpha(alpha)
+            ps.set_alpha(alpha)
+            surface.blit(bg, (SCREEN_W // 2 - bg.get_width() // 2, py))
+            surface.blit(ps, (SCREEN_W // 2 - ps.get_width() // 2, py + 4))
+
+        # Difficulty label (only when not Normal)
+        diff_idx = self._player_data.get("difficulty", 1) if self._player_data else 1
+        if diff_idx != 1:
+            from core.settings import DIFFICULTIES
+            _DIFF_COLORS = [(50, 200, 80), (200, 200, 200), (255, 140, 0), (220, 50, 50)]
+            diff_name = DIFFICULTIES[diff_idx]["name"]
+            dc = _DIFF_COLORS[diff_idx]
+            ds = self._font.render(diff_name.upper(), True, dc)
+            surface.blit(ds, (SCREEN_W // 2 - ds.get_width() // 2, 4))
+
+        # Challenge modifier label
+        if self._challenge_modifier:
+            mod_s = self._font.render(f"[CHALLENGE]", True, (255, 180, 50))
+            surface.blit(mod_s, (4, 4))
 
         if self._paused:
             self._draw_pause(surface)

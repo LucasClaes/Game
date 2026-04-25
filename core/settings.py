@@ -1,5 +1,12 @@
 VERSION = "v1.0.0"
 
+DIFFICULTIES = [
+    {"name": "Easy",      "hp": 0.70, "speed": 0.80, "damage": 0.75, "coins": 1.25},
+    {"name": "Normal",    "hp": 1.00, "speed": 1.00, "damage": 1.00, "coins": 1.00},
+    {"name": "Hard",      "hp": 1.40, "speed": 1.20, "damage": 1.25, "coins": 0.85},
+    {"name": "Nightmare", "hp": 2.00, "speed": 1.50, "damage": 1.75, "coins": 0.70},
+]
+
 SCREEN_W = 960
 SCREEN_H = 640
 FPS = 60

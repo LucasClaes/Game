@@ -8,6 +8,8 @@ class GameState(Enum):
     GAME_OVER = auto()
     LEVEL_COMPLETE = auto()
     SETTINGS = auto()
+    ACHIEVEMENTS = auto()
+    CODEX = auto()
 
 
 class StateManager:

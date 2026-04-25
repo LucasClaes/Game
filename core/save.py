@@ -22,6 +22,13 @@ _DEFAULT = {
     "sfx_vol": 1.0,
     "gear": {},
     "run_perks": [],
+    "total_kills": 0,
+    "bosses_killed": 0,
+    "achievements": [],
+    "challenge_wins": {},
+    "seen_perks": [],
+    "found_gear": [],
+    "difficulty": 1,
 }
 
 
@@ -32,6 +39,10 @@ def _merge(data: dict) -> dict:
     merged["upgrades"].update(data.get("upgrades", {}))
     merged["gear"] = dict(data.get("gear", {}))
     merged["run_perks"] = list(data.get("run_perks", []))
+    merged["achievements"] = list(data.get("achievements", []))
+    merged["challenge_wins"] = dict(data.get("challenge_wins", {}))
+    merged["seen_perks"] = list(data.get("seen_perks", []))
+    merged["found_gear"] = list(data.get("found_gear", []))
     return merged
 
 

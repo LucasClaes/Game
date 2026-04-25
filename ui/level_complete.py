@@ -35,6 +35,9 @@ class LevelCompleteScreen:
         self._perk_rects: list = []
         self._kill_count = 0
         self._elapsed = 0.0
+        self._challenge_modifier: str | None = None
+        self._challenge_id: str | None = None
+        self._challenge_reward: int = 0
 
     def on_enter(self, **kwargs):
         self._player_data = kwargs.get("player_data")
@@ -42,6 +45,9 @@ class LevelCompleteScreen:
         self._level_num = kwargs.get("level_num", 0)
         self._kill_count = kwargs.get("kill_count", 0)
         self._elapsed = kwargs.get("elapsed", 0.0)
+        self._challenge_modifier = kwargs.get("challenge_modifier", None)
+        self._challenge_id       = kwargs.get("challenge_id", None)
+        self._challenge_reward   = kwargs.get("challenge_reward", 0)
         self._selected = 0
         self._perk_sel = 0
         self._perk_rects = []
@@ -65,6 +71,15 @@ class LevelCompleteScreen:
         count = min(3, len(available))
         self._offered_perks = random.sample(available, count)
         self._perk_phase = True
+
+        # Track seen perks
+        if self._player_data:
+            seen = self._player_data.setdefault("seen_perks", [])
+            for p in self._offered_perks:
+                if p["id"] not in seen:
+                    seen.append(p["id"])
+            from core.save import write_save
+            write_save(self._player_data)
 
     def update(self, events, dt):
         if self._perk_phase:
@@ -126,11 +141,18 @@ class LevelCompleteScreen:
         label = self._buttons[index]
         next_level = self._level_num + 1
         self._player_data["current_level"] = next_level
+        ck = dict(challenge_modifier=self._challenge_modifier,
+                  challenge_id=self._challenge_id,
+                  challenge_reward=self._challenge_reward)
         if label == "CONTINUE":
-            self._sm.switch_to(GameState.PLAYING, player_data=self._player_data)
+            self._sm.switch_to(GameState.PLAYING, player_data=self._player_data, **ck)
         elif label == "SHOP":
-            self._sm.switch_to(GameState.SHOP, player_data=self._player_data,
-                               from_state="LEVEL_COMPLETE", level_num=next_level)
+            if self._challenge_modifier == "no_shop":
+                # Skip shop in no_shop challenge
+                self._sm.switch_to(GameState.PLAYING, player_data=self._player_data, **ck)
+            else:
+                self._sm.switch_to(GameState.SHOP, player_data=self._player_data,
+                                   from_state="LEVEL_COMPLETE", level_num=next_level)
         elif label == "MAIN MENU":
             from core.save import write_save
             write_save(self._player_data)
