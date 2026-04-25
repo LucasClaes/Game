@@ -16,11 +16,16 @@ BULLET_DAMAGE_BASE = 15
 MELEE_DAMAGE_BASE = 25
 
 ZOMBIE_TYPES = {
-    "basic":  {"hp": 60,  "speed": 90,  "damage": 1, "coin_drop": 5},
-    "fast":   {"hp": 35,  "speed": 175, "damage": 2, "coin_drop": 12},
-    "tank":   {"hp": 220, "speed": 50,  "damage": 3, "coin_drop": 25},
-    "ranged": {"hp": 45,  "speed": 55,  "damage": 1, "coin_drop": 18,
-               "shoot_range": 192, "shoot_cooldown": 2.0},
+    "basic":    {"hp": 60,  "speed": 90,  "damage": 1, "coin_drop": 5},
+    "fast":     {"hp": 35,  "speed": 175, "damage": 2, "coin_drop": 12},
+    "tank":     {"hp": 220, "speed": 50,  "damage": 3, "coin_drop": 25},
+    "ranged":   {"hp": 45,  "speed": 55,  "damage": 1, "coin_drop": 18,
+                 "shoot_range": 192, "shoot_cooldown": 2.0},
+    "exploder": {"hp": 30,  "speed": 140, "damage": 1, "coin_drop": 3},
+    "healer":   {"hp": 40,  "speed": 70,  "damage": 1, "coin_drop": 8,
+                 "heal_radius": 80, "heal_amount": 15, "heal_interval": 2.0},
+    "lurker":   {"hp": 50,  "speed": 120, "damage": 2, "coin_drop": 10,
+                 "lurk_aggro": 120},
 }
 
 AGGRO_RADIUS       = 200   # px — zombie detection range

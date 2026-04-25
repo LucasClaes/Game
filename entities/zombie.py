@@ -6,10 +6,13 @@ _PATH_INTERVAL = 0.45  # seconds between BFS recalculations
 
 # Visual style per zombie type
 _STYLE = {
-    "basic":  {"color": (220, 60,  60),  "glow": (255, 80,  80),  "glow_r": 20, "shape": "rect"},
-    "fast":   {"color": (255, 140, 30),  "glow": (255, 170, 60),  "glow_r": 17, "shape": "diamond"},
-    "tank":   {"color": (160, 60,  220), "glow": (190, 90,  255), "glow_r": 26, "shape": "circle"},
-    "ranged": {"color": (180, 80,  200), "glow": (200, 110, 255), "glow_r": 18, "shape": "diamond"},
+    "basic":    {"color": (220, 60,  60),  "glow": (255, 80,  80),  "glow_r": 20, "shape": "rect"},
+    "fast":     {"color": (255, 140, 30),  "glow": (255, 170, 60),  "glow_r": 17, "shape": "diamond"},
+    "tank":     {"color": (160, 60,  220), "glow": (190, 90,  255), "glow_r": 26, "shape": "circle"},
+    "ranged":   {"color": (180, 80,  200), "glow": (200, 110, 255), "glow_r": 18, "shape": "diamond"},
+    "exploder": {"color": (60,  220, 80),  "glow": (80,  255, 100), "glow_r": 18, "shape": "circle"},
+    "healer":   {"color": (200, 100, 220), "glow": (220, 130, 255), "glow_r": 20, "shape": "cross"},
+    "lurker":   {"color": (0,   180, 180), "glow": (0,   220, 220), "glow_r": 16, "shape": "diamond"},
 }
 
 
@@ -49,8 +52,23 @@ class Zombie:
         self._shoot_cooldown = stats.get("shoot_cooldown", 2.0)
         self._shoot_timer = self._shoot_cooldown
 
+        # Exploder
+        self.death_data = {}  # populated on death for exploder
+
+        # Healer
+        self._heal_radius   = stats.get("heal_radius",   0)
+        self._heal_amount   = stats.get("heal_amount",   0)
+        self._heal_interval = stats.get("heal_interval", 2.0)
+        self._heal_timer    = 0.0
+        self._healing_flash = 0.0  # green flash when healing fires
+
+        # Lurker
+        self._lurk_aggro = stats.get("lurk_aggro", AGGRO_RADIUS)
+        self._hidden = zombie_type == "lurker"
+
     def update(self, dt: float, player_pos: pygame.Vector2,
-               walls: list, tile_grid=None, tile_w: int = 30, tile_h: int = 20) -> list:
+               walls: list, tile_grid=None, tile_w: int = 30, tile_h: int = 20,
+               zombies: list = None) -> list:
         if not self.alive:
             return []
         self._hit_flash = max(0.0, self._hit_flash - dt)
@@ -59,9 +77,11 @@ class Zombie:
         self._depenetrate(walls)
 
         # Aggro detection: switch to CHASE when player is close enough
+        aggro_dist = self._lurk_aggro if self.zombie_type == "lurker" else AGGRO_RADIUS
         if self._state == Zombie.IDLE:
-            if (player_pos - self.pos).length() <= AGGRO_RADIUS:
+            if (player_pos - self.pos).length() <= aggro_dist:
                 self._state = Zombie.CHASE
+                self._hidden = False  # lurker reveals itself on aggro
 
         if self._state == Zombie.IDLE:
             return []
@@ -100,6 +120,20 @@ class Zombie:
             self._move_toward(player_pos, dt, walls)
 
         self.rect.center = (int(self.pos.x), int(self.pos.y))
+
+        # Healer: periodically restore HP to nearby zombies
+        if self.zombie_type == "healer" and self._heal_radius > 0:
+            self._heal_timer -= dt
+            self._healing_flash = max(0.0, self._healing_flash - dt)
+            if self._heal_timer <= 0 and zombies is not None:
+                self._heal_timer = self._heal_interval
+                for z in zombies:
+                    if z is not self and z.alive:
+                        if (z.pos - self.pos).length() <= self._heal_radius:
+                            z.hp = min(z.max_hp, z.hp + self._heal_amount)
+                            z._hit_flash = 0.0
+                            self._healing_flash = 0.3
+
         return []
 
     def _depenetrate(self, walls: list):
@@ -150,6 +184,13 @@ class Zombie:
         self._invincible = 0.14
         if self.hp <= 0:
             self.alive = False
+            if self.zombie_type == "exploder":
+                self.death_data = {
+                    "explode": True,
+                    "pos": self.pos.copy(),
+                    "radius": 80,
+                    "damage": 50,
+                }
             return True
         return False
 
@@ -162,10 +203,26 @@ class Zombie:
         body_color = WHITE if self._hit_flash > 0 else style["color"]
 
         from systems.gfx import glow
-        glow(surface, cx, cy, style["glow_r"], style["glow"], 65)
+        if self.zombie_type == "exploder":
+            danger  = 1.0 - (self.hp / self.max_hp)
+            pulse_r = int(style["glow_r"] + danger * 14 + math.sin(self._anim * 6) * 4)
+            glow(surface, cx, cy, pulse_r, style["glow"], int(65 + danger * 80))
+        else:
+            glow(surface, cx, cy, style["glow_r"], style["glow"], 65)
 
         shape = style["shape"]
         half = self.SIZE // 2
+
+        # Lurker: draw faint ghost outline only while hidden
+        if self.zombie_type == "lurker" and self._hidden:
+            s = pygame.Surface((self.SIZE * 3, self.SIZE * 3), pygame.SRCALPHA)
+            sp = [(self.SIZE * 3 // 2,          self.SIZE * 3 // 2 - half),
+                  (self.SIZE * 3 // 2 + half,   self.SIZE * 3 // 2),
+                  (self.SIZE * 3 // 2,          self.SIZE * 3 // 2 + half),
+                  (self.SIZE * 3 // 2 - half,   self.SIZE * 3 // 2)]
+            pygame.draw.polygon(s, (0, 220, 220, 40), sp)
+            surface.blit(s, (cx - self.SIZE * 3 // 2, cy - self.SIZE * 3 // 2))
+            return  # skip rest of draw for hidden lurker
 
         if shape == "circle":
             pygame.draw.circle(surface, body_color, (cx, cy), half)
@@ -175,6 +232,17 @@ class Zombie:
                    (cx, cy + half), (cx - half, cy)]
             pygame.draw.polygon(surface, body_color, pts)
             pygame.draw.polygon(surface, (255, 200, 100), pts, 2)
+        elif shape == "cross":
+            bar_thickness = 8
+            color_to_use = (100, 255, 100) if self._healing_flash > 0 else body_color
+            pygame.draw.rect(surface, color_to_use,
+                             (cx - half, cy - bar_thickness // 2, self.SIZE, bar_thickness))
+            pygame.draw.rect(surface, color_to_use,
+                             (cx - bar_thickness // 2, cy - half, bar_thickness, self.SIZE))
+            pygame.draw.rect(surface, (220, 150, 255),
+                             (cx - half, cy - bar_thickness // 2, self.SIZE, bar_thickness), 1)
+            pygame.draw.rect(surface, (220, 150, 255),
+                             (cx - bar_thickness // 2, cy - half, bar_thickness, self.SIZE), 1)
         else:
             draw_rect = self.rect.move(-offset.x, -offset.y)
             pygame.draw.rect(surface, body_color, draw_rect, border_radius=5)
