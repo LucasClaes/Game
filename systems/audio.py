@@ -34,6 +34,14 @@ def _square(freq: float, dur: float, vol: float = 0.3) -> pygame.mixer.Sound:
     return pygame.mixer.Sound(buffer=buf)
 
 
+def _chime(freqs, dur_each: float, vol: float = 0.35) -> pygame.mixer.Sound:
+    chunks = []
+    for f in freqs:
+        n = int(dur_each * _RATE)
+        chunks += [int(math.sin(2 * math.pi * f * i / _RATE) * 32767 * vol) for i in range(n)]
+    return pygame.mixer.Sound(buffer=array.array('h', chunks))
+
+
 # ── AudioManager ───────────────────────────────────────────────────────────────
 
 class AudioManager:
@@ -51,14 +59,19 @@ class AudioManager:
 
     def load(self):
         s = self._sounds
-        s['shoot']       = _square(880,  0.07, vol=0.22)
-        s['melee']       = _square(130,  0.10, vol=0.32)
-        s['enemy_die']   = _square(75,   0.16, vol=0.38)
-        s['player_hurt'] = _square(190,  0.20, vol=0.42)
-        s['coin']        = _sine(1320,   0.07, vol=0.28)
-        s['level_up']    = _sine(660,    0.30, vol=0.38)
-        s['boss_roar']   = _square(50,   0.40, vol=0.48)
-        s['game_over']   = _sine(100,    0.70, vol=0.42)
+        s['shoot']           = _square(880,  0.07, vol=0.22)
+        s['melee']           = _square(130,  0.10, vol=0.32)
+        s['enemy_die']       = _square(75,   0.16, vol=0.38)
+        s['player_hurt']     = _square(190,  0.20, vol=0.42)
+        s['coin']            = _sine(1320,   0.07, vol=0.28)
+        s['level_up']        = _sine(660,    0.30, vol=0.38)
+        s['boss_roar']       = _square(50,   0.40, vol=0.48)
+        s['game_over']       = _sine(100,    0.70, vol=0.42)
+        s['dash']            = _square(400,  0.09, vol=0.25)
+        s['shield_activate'] = _sine(880,    0.15, vol=0.30)
+        s['bomb_explode']    = _square(55,   0.35, vol=0.50)
+        s['crate_open']      = _sine(1760,   0.12, vol=0.30)
+        s['perk_get']        = _chime([660, 880, 1100], 0.12)
         self._enabled = True
         self._apply_sfx_volume()
 
