@@ -21,13 +21,15 @@ _DEFAULT = {
     "music_vol": 0.4,
     "sfx_vol": 1.0,
     "gear": {},
-    "run_perks": [],
+    "run_perks": {},
     "total_kills": 0,
     "bosses_killed": 0,
     "achievements": [],
     "challenge_wins": {},
     "seen_perks": [],
     "found_gear": [],
+    "inventory": [],
+    "best_level_by_diff": {},
     "difficulty": 1,
 }
 
@@ -38,11 +40,22 @@ def _merge(data: dict) -> dict:
     merged["upgrades"] = dict(_DEFAULT["upgrades"])
     merged["upgrades"].update(data.get("upgrades", {}))
     merged["gear"] = dict(data.get("gear", {}))
-    merged["run_perks"] = list(data.get("run_perks", []))
+    # Migrate run_perks: list of ids → dict of {id: level}
+    rp = data.get("run_perks", {})
+    if isinstance(rp, list):
+        rp = {pid: 1 for pid in rp}
+    merged["run_perks"] = dict(rp)
     merged["achievements"] = list(data.get("achievements", []))
     merged["challenge_wins"] = dict(data.get("challenge_wins", {}))
     merged["seen_perks"] = list(data.get("seen_perks", []))
     merged["found_gear"] = list(data.get("found_gear", []))
+    # Migrate inventory: seed from found_gear + equipped gear if not present
+    if "inventory" in data:
+        merged["inventory"] = list(data["inventory"])
+    else:
+        seed = list(set(data.get("found_gear", []) + list(data.get("gear", {}).values())))
+        merged["inventory"] = [x for x in seed if x]
+    merged["best_level_by_diff"] = dict(data.get("best_level_by_diff", {}))
     return merged
 
 

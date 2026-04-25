@@ -9,14 +9,14 @@ from core.settings import (
 )
 
 
-def generate(level_num: int) -> dict:
+def generate(level_num: int, difficulty: int = 1) -> dict:
     idx = level_num  # 0-indexed from level 0
     tile_w = min(PROCGEN_BASE_W + PROCGEN_GROWTH_W * idx, PROCGEN_MAX_W)
     tile_h = min(PROCGEN_BASE_H + PROCGEN_GROWTH_H * idx, PROCGEN_MAX_H)
     room_count = min(PROCGEN_BASE_ROOMS + idx, 20)
 
     for _ in range(PROCGEN_MAX_ATTEMPTS):
-        result = _attempt(level_num, idx, tile_w, tile_h, room_count)
+        result = _attempt(level_num, idx, tile_w, tile_h, room_count, difficulty)
         if result is not None:
             return result
 
@@ -53,7 +53,7 @@ def generate_boss(level_num: int) -> dict:
     }
 
 
-def _attempt(level_num, idx, tile_w, tile_h, room_count):
+def _attempt(level_num, idx, tile_w, tile_h, room_count, difficulty=1):
     walkable = [[False] * tile_w for _ in range(tile_h)]
     rooms = []
 
@@ -130,8 +130,10 @@ def _attempt(level_num, idx, tile_w, tile_h, room_count):
         and walkable[ty - 1][tx] and walkable[ty + 1][tx]
         and walkable[ty][tx - 1] and walkable[ty][tx + 1]
     ]
+    from core.settings import DIFFICULTIES
+    spawn_mult = DIFFICULTIES[difficulty]["spawn_count_mult"] if difficulty < len(DIFFICULTIES) else 1.0
     zombie_count = min(
-        PROCGEN_BASE_ZOMBIES + PROCGEN_ZOMBIE_GROWTH * idx,
+        int((PROCGEN_BASE_ZOMBIES + PROCGEN_ZOMBIE_GROWTH * idx) * spawn_mult),
         PROCGEN_MAX_ZOMBIES,
         len(zombie_candidates),
     )
@@ -173,7 +175,7 @@ def _attempt(level_num, idx, tile_w, tile_h, room_count):
         "exit": list(exit_pos),
         "walls": _build_walls(walkable, tile_w, tile_h),
         "coins": [[cx, cy] for cx, cy in coin_positions],
-        "zombies": _make_zombies(zombie_positions, idx),
+        "zombies": _make_zombies(zombie_positions, idx, difficulty),
         "traps": [[tx, ty] for tx, ty in trap_positions],
         "crates": [[tx, ty] for tx, ty in crate_positions],
         "barrels": [[tx, ty] for tx, ty in barrel_positions],
@@ -237,29 +239,57 @@ def _build_walls(walkable, tile_w, tile_h):
     return walls
 
 
-def _make_zombies(positions, idx):
-    t = min(idx / 10.0, 1.0)
+# (id, min_lv, min_diff, base_weight, scale_per_lv)
+_SPAWN_WEIGHTS = [
+    ("basic",    1, 0, 1.00, -0.085),
+    ("fast",     2, 0, 0.30,  0.010),
+    ("tank",     3, 0, 0.25,  0.005),
+    ("ranged",   3, 0, 0.20,  0.005),
+    ("exploder", 2, 0, 0.12,  0.005),
+    ("healer",   3, 0, 0.06,  0.004),
+    ("lurker",   4, 0, 0.10,  0.005),
+    ("crawler",  1, 0, 0.40, -0.005),
+    ("spitter",  4, 0, 0.10,  0.005),
+    ("bomber",   4, 0, 0.10,  0.005),
+    ("shielder", 5, 0, 0.10,  0.005),
+    ("phaser",   6, 2, 0.15,  0.005),
+    ("summoner", 7, 0, 0.08,  0.004),
+    ("vortex",   8, 2, 0.10,  0.005),
+    ("behemoth", 10, 0, 0.05, 0.002),
+]
 
-    basic_w    = max(0.10, 1.0 - t * 0.85)
-    fast_w     = t * 0.30
-    tank_w     = t * 0.25
-    ranged_w   = min(t * 0.25, 0.20) if idx >= 3 else 0.0
-    exploder_w = min(t * 0.15, 0.12) if idx >= 1 else 0.0
-    healer_w   = min(t * 0.08, 0.06) if idx >= 2 else 0.0
-    lurker_w   = min(t * 0.12, 0.10) if idx >= 3 else 0.0
 
-    types   = ["basic", "fast", "tank", "ranged", "exploder", "healer", "lurker"]
-    weights = [basic_w, fast_w, tank_w, ranged_w, exploder_w, healer_w, lurker_w]
+def _make_zombies(positions, idx, difficulty=1):
+    eligible = [
+        (zid, base + scale * idx)
+        for zid, min_lv, min_diff, base, scale in _SPAWN_WEIGHTS
+        if idx + 1 >= min_lv and difficulty >= min_diff
+    ]
+    if not eligible:
+        eligible = [("basic", 1.0)]
+
+    types   = [e[0] for e in eligible]
+    weights = [max(0.01, e[1]) for e in eligible]
 
     elite_chance = 0.15 if idx >= 3 else 0.0
-    return [
-        {
-            "tile": list(pos),
-            "type": random.choices(types, weights=weights, k=1)[0],
-            "elite": random.random() < elite_chance,
-        }
-        for pos in positions
-    ]
+    result = []
+    for pos in positions:
+        ztype = random.choices(types, weights=weights, k=1)[0]
+        if ztype == "crawler":
+            # Spawn 3 crawlers in a cluster
+            for dx, dy in ((0, 0), (1, 0), (0, 1)):
+                result.append({
+                    "tile": [pos[0] + dx, pos[1] + dy],
+                    "type": "crawler",
+                    "elite": False,
+                })
+        else:
+            result.append({
+                "tile": list(pos),
+                "type": ztype,
+                "elite": random.random() < elite_chance,
+            })
+    return result
 
 
 def _bg_color(idx):

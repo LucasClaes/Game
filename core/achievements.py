@@ -54,6 +54,11 @@ def check_achievements(player_data: dict, callback, extra_stats: dict | None = N
                 unlocked = val <= target
         elif cond == "perfect_level":
             unlocked = bool(extra.get("perfect_level"))
+        elif cond == "best_level_by_diff":
+            min_diff = ach.get("min_difficulty", 0)
+            diff_key = str(min_diff)
+            best = player_data.get("best_level_by_diff", {}).get(diff_key, 0)
+            unlocked = best >= target
 
         if unlocked:
             earned.append(ach["id"])
@@ -87,4 +92,8 @@ def get_progress(player_data: dict, ach: dict, extra_stats: dict | None = None) 
         return (int(val) if val is not None else 0), target
     if cond == "perfect_level":
         return (1 if extra.get("perfect_level") else 0), target
+    if cond == "best_level_by_diff":
+        min_diff = ach.get("min_difficulty", 0)
+        best = player_data.get("best_level_by_diff", {}).get(str(min_diff), 0)
+        return best, target
     return 0, target

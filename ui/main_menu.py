@@ -129,7 +129,7 @@ class MainMenuScreen:
         from core.state_machine import GameState
         pd = self._player_data.copy() if self._player_data else {}
         pd["current_level"] = 0
-        pd["run_perks"] = []
+        pd["run_perks"] = {}
         self._sm.switch_to(GameState.PLAYING, player_data=pd,
                            challenge_modifier=today["modifier"],
                            challenge_id=today["id"],
@@ -215,10 +215,18 @@ class MainMenuScreen:
             coin_surf = self._font.render(f"Bank: {self._player_data['coins']} coins", True, YELLOW)
             surface.blit(coin_surf, (SCREEN_W // 2 - coin_surf.get_width() // 2, y_info))
 
-            best_lv = self._player_data.get("best_level", 0)
-            best_c  = self._player_data.get("best_coins", 0)
-            if best_lv > 0 or best_c > 0:
-                hs = self._font.render(f"Best: Level {best_lv}  |  {best_c} coins", True, (180, 160, 100))
+            diff_idx = self._diff_idx()
+            diff_name = DIFFICULTIES[diff_idx]["name"]
+            best_for_diff = self._player_data.get("best_level_by_diff", {}).get(str(diff_idx), 0)
+            best_lv_global = self._player_data.get("best_level", 0)
+            best_c = self._player_data.get("best_coins", 0)
+            if best_for_diff > 0:
+                hs = self._font.render(
+                    f"Best on {diff_name}: Level {best_for_diff}  |  Overall: {best_lv_global}",
+                    True, (180, 160, 100))
+                surface.blit(hs, (SCREEN_W // 2 - hs.get_width() // 2, y_info + 20))
+            elif best_lv_global > 0 or best_c > 0:
+                hs = self._font.render(f"Best: Level {best_lv_global}  |  {best_c} coins", True, (180, 160, 100))
                 surface.blit(hs, (SCREEN_W // 2 - hs.get_width() // 2, y_info + 20))
 
         # Controls hint

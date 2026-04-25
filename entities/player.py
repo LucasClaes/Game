@@ -74,7 +74,10 @@ class Player:
         self.lives = PLAYER_LIVES_BASE + hp
         self.max_lives = self.lives
 
-        self.bullet_pierce = False
+        self.bullet_pierce_count = 0
+        self.execute_bonus = 0.0
+        self.first_hit_immune_charges = 0
+        self.hp_drain_interval = 0.0
 
         # Apply gear bonuses
         gear_defs = _load_gear_defs()
@@ -91,26 +94,43 @@ class Player:
                 self.melee_damage = int(self.melee_damage * (1 + val))
             elif stat == "bonus_ranged":
                 self.bullet_damage = int(self.bullet_damage * (1 + val))
+            elif stat == "bonus_melee_ranged":
+                self.melee_damage = int(self.melee_damage * (1 + val))
+                self.bullet_damage = int(self.bullet_damage * (1 + val))
+                if piece.get("hp_drain"):
+                    self.hp_drain_interval = piece["hp_drain"]
             elif stat == "bonus_speed":
                 self.speed *= (1 + val)
+                if piece.get("bonus_dash_speed"):
+                    self.dash_speed *= (1 + piece["bonus_dash_speed"])
             elif stat == "bonus_firerate":
                 self.swing_cooldown *= (1 - val)
                 self.shoot_cooldown *= (1 - val)
             elif stat == "bonus_dash":
                 self.dash_cooldown *= (1 - val)
+            elif stat == "first_hit_immune":
+                self.first_hit_immune_charges += int(val)
+            elif stat == "execute_bonus":
+                self.execute_bonus = val
         self.hp = self.max_hp
 
         # Apply run perk stat bonuses
-        for perk_id in pd.get("run_perks", []):
+        run_perks = pd.get("run_perks", {})
+        if isinstance(run_perks, list):
+            run_perks = {pid: 1 for pid in run_perks}
+        for perk_id, lv in run_perks.items():
+            if lv <= 0:
+                continue
             if perk_id == "juggernaut":
-                self.max_hp += 1
+                self.max_hp += lv
                 self.speed *= 0.85
             elif perk_id == "glass_cannon":
-                self.melee_damage = int(self.melee_damage * 1.4)
-                self.bullet_damage = int(self.bullet_damage * 1.4)
+                mult = [1.40, 1.55, 1.75][min(lv - 1, 2)]
+                self.melee_damage = int(self.melee_damage * mult)
+                self.bullet_damage = int(self.bullet_damage * mult)
                 self.max_hp = max(1, self.max_hp - 1)
             elif perk_id == "sharpshooter":
-                self.bullet_pierce = True
+                self.bullet_pierce_count = [1, 2, 3][min(lv - 1, 2)]
         self.hp = self.max_hp
 
         self.swing_timer = 0.0
@@ -157,8 +177,7 @@ class Player:
             return
         direction = pygame.Vector2(1, 0).rotate(self.facing)
         spawn = self.pos + direction * (_PLAYER_RADIUS + 6)
-        pierce = 1 if self.bullet_pierce else 0
-        bullets.append(Bullet(spawn, direction * BULLET_SPEED, self.bullet_damage, pierce=pierce))
+        bullets.append(Bullet(spawn, direction * BULLET_SPEED, self.bullet_damage, pierce=self.bullet_pierce_count))
         self.shoot_timer = self.shoot_cooldown
 
     def use_bomb(self) -> bool:

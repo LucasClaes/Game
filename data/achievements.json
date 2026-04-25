@@ -1,14 +1,17 @@
 {
   "achievements": [
-    {"id": "first_blood",   "name": "First Blood",    "desc": "Kill your first enemy",                  "condition": "total_kills",    "target": 1,    "reward": 0},
-    {"id": "survivor",      "name": "Survivor",       "desc": "Reach level 5",                          "condition": "best_level",     "target": 5,    "reward": 50},
-    {"id": "coin_hoarder",  "name": "Coin Hoarder",   "desc": "Accumulate 1000 coins total",            "condition": "coins",          "target": 1000, "reward": 100},
-    {"id": "killstreak",    "name": "Killstreak",     "desc": "Kill 500 enemies across all runs",       "condition": "total_kills",    "target": 500,  "reward": 150},
-    {"id": "fully_loaded",  "name": "Fully Loaded",   "desc": "Reach 9 total upgrade levels",           "condition": "upgrades_sum",   "target": 9,    "reward": 200},
-    {"id": "gear_head",     "name": "Gear Head",      "desc": "Equip gear in all 4 slots",              "condition": "gear_slots",     "target": 4,    "reward": 75},
-    {"id": "deep_diver",    "name": "Deep Diver",     "desc": "Reach level 10",                         "condition": "best_level",     "target": 10,   "reward": 250},
-    {"id": "speedster",     "name": "Speedster",      "desc": "Complete a level in under 60 seconds",   "condition": "fast_level",     "target": 60,   "reward": 100},
-    {"id": "untouchable",   "name": "Untouchable",    "desc": "Complete a level without taking damage", "condition": "perfect_level",  "target": 1,    "reward": 100},
-    {"id": "boss_slayer",   "name": "Boss Slayer",    "desc": "Defeat your first boss",                 "condition": "bosses_killed",  "target": 1,    "reward": 50}
+    {"id": "first_blood",          "name": "First Blood",       "desc": "Kill your first enemy",                               "condition": "total_kills",         "target": 1,    "reward": 0},
+    {"id": "survivor",             "name": "Survivor",          "desc": "Reach level 5",                                       "condition": "best_level",          "target": 5,    "reward": 50},
+    {"id": "coin_hoarder",         "name": "Coin Hoarder",      "desc": "Accumulate 1000 coins total",                         "condition": "coins",               "target": 1000, "reward": 100},
+    {"id": "killstreak",           "name": "Killstreak",        "desc": "Kill 500 enemies across all runs",                    "condition": "total_kills",         "target": 500,  "reward": 150},
+    {"id": "fully_loaded",         "name": "Fully Loaded",      "desc": "Reach 9 total upgrade levels",                        "condition": "upgrades_sum",        "target": 9,    "reward": 200},
+    {"id": "gear_head",            "name": "Gear Head",         "desc": "Equip gear in all 4 slots",                           "condition": "gear_slots",          "target": 4,    "reward": 75},
+    {"id": "deep_diver",           "name": "Deep Diver",        "desc": "Reach level 10",                                      "condition": "best_level",          "target": 10,   "reward": 250},
+    {"id": "speedster",            "name": "Speedster",         "desc": "Complete a level in under 60 seconds",                "condition": "fast_level",          "target": 60,   "reward": 100},
+    {"id": "untouchable",          "name": "Untouchable",       "desc": "Complete a level without taking damage",              "condition": "perfect_level",       "target": 1,    "reward": 100},
+    {"id": "boss_slayer",          "name": "Boss Slayer",       "desc": "Defeat your first boss",                              "condition": "bosses_killed",       "target": 1,    "reward": 50},
+    {"id": "nightmare_initiated",  "name": "Nightmare Begun",   "desc": "Reach level 3 on Nightmare difficulty",               "condition": "best_level_by_diff",  "target": 3,    "reward": 200, "min_difficulty": 3},
+    {"id": "hard_veteran",         "name": "Hard Veteran",      "desc": "Reach level 10 on Hard difficulty",                   "condition": "best_level_by_diff",  "target": 10,   "reward": 300, "min_difficulty": 2},
+    {"id": "nightmare_legend",     "name": "Nightmare Legend",  "desc": "Reach level 10 on Nightmare difficulty",              "condition": "best_level_by_diff",  "target": 10,   "reward": 1000,"min_difficulty": 3}
   ]
 }

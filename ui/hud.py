@@ -98,8 +98,14 @@ class HUD:
 
     def _draw_perks(self, surface, run_perks):
         x, y = 12, 52
-        for pid in run_perks:
-            label = pid[:3].upper()
+        # run_perks is dict {id: level} or legacy list
+        if isinstance(run_perks, list):
+            items = [(pid, 1) for pid in run_perks]
+        else:
+            items = list(run_perks.items())
+        _sup = {1: "¹", 2: "²", 3: "³"}
+        for pid, lv in items:
+            label = pid[:3].upper() + _sup.get(lv, str(lv))
             badge_surf = self._font.render(label, True, (255, 200, 80))
             bw = badge_surf.get_width() + 8
             pygame.draw.rect(surface, (60, 50, 20), (x, y, bw, 18), border_radius=3)

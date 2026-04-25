@@ -36,10 +36,17 @@ class CodexScreen:
         self._tab = 0  # 0=PERKS, 1=GEAR
         self._tab_rects: list = []
         self._back_rect = None
+        # Gear tab UI state
+        self._slot_rects: dict = {}
+        self._inv_rects: list = []   # [(gear_id, rect), ...]
+        self._selected_slot: str | None = None
+        self._inv_scroll = 0
 
     def on_enter(self, **kwargs):
         self._player_data = kwargs.get("player_data")
         self._tab = 0
+        self._selected_slot = None
+        self._inv_scroll = 0
 
     def update(self, events, dt):
         for event in events:
@@ -53,9 +60,39 @@ class CodexScreen:
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if self._back_rect and self._back_rect.collidepoint(event.pos):
                     self._back()
+                    return
                 for i, rect in enumerate(self._tab_rects):
                     if rect.collidepoint(event.pos):
                         self._tab = i
+                        return
+                if self._tab == 1:
+                    self._handle_gear_click(event.pos)
+            if event.type == pygame.MOUSEWHEEL and self._tab == 1:
+                self._inv_scroll = max(0, self._inv_scroll - event.y * 30)
+
+    def _handle_gear_click(self, pos):
+        from core.inventory import equip, unequip
+        from core.save import write_save
+
+        # Click on equipped slot → unequip
+        for slot, rect in self._slot_rects.items():
+            if rect.collidepoint(pos):
+                equipped = self._player_data.get("gear", {})
+                if equipped.get(slot):
+                    unequip(self._player_data, slot)
+                    write_save(self._player_data)
+                return
+
+        # Click on inventory item → equip into its slot
+        for gear_id, rect in self._inv_rects:
+            if rect.collidepoint(pos):
+                gear_list = _load_gear()
+                gear_map = {g["id"]: g for g in gear_list}
+                piece = gear_map.get(gear_id)
+                if piece:
+                    equip(self._player_data, piece["slot"], gear_id)
+                    write_save(self._player_data)
+                return
 
     def _back(self):
         from core.state_machine import GameState
@@ -106,6 +143,9 @@ class CodexScreen:
     def _draw_perks(self, surface: pygame.Surface, y0: int):
         perks = _load_perks()
         seen  = self._player_data.get("seen_perks", []) if self._player_data else []
+        owned = self._player_data.get("run_perks", {}) if self._player_data else {}
+        if isinstance(owned, list):
+            owned = {pid: 1 for pid in owned}
 
         cols = 2
         card_w, card_h = 420, 64
@@ -120,13 +160,17 @@ class CodexScreen:
             cy = y0 + row * (card_h + gap_y)
 
             revealed = perk["id"] in seen
+            lv = owned.get(perk["id"], 0)
             bg     = (22, 40, 22) if revealed else (20, 20, 30)
             border = GREEN        if revealed else (50, 50, 65)
+            if lv > 0:
+                bg, border = (40, 38, 10), (200, 160, 30)
             pygame.draw.rect(surface, bg,     (cx, cy, card_w, card_h), border_radius=6)
             pygame.draw.rect(surface, border, (cx, cy, card_w, card_h), 2, border_radius=6)
 
             if revealed:
-                name_s = self._big.render(perk["name"], True, WHITE)
+                lv_label = f"  Lv {lv}/3" if lv > 0 else ""
+                name_s = self._big.render(perk["name"] + lv_label, True, WHITE)
                 desc_s = self._font.render(perk["desc"], True, (150, 190, 150))
                 surface.blit(name_s, (cx + 12, cy + 8))
                 surface.blit(desc_s, (cx + 12, cy + 36))
@@ -138,59 +182,84 @@ class CodexScreen:
 
     def _draw_gear(self, surface: pygame.Surface, y0: int):
         gear_list = _load_gear()
-        found    = self._player_data.get("found_gear", []) if self._player_data else []
-        equipped = self._player_data.get("gear", {}) if self._player_data else {}
+        gear_map  = {g["id"]: g for g in gear_list}
+        inventory = self._player_data.get("inventory", []) if self._player_data else []
+        equipped  = self._player_data.get("gear", {}) if self._player_data else {}
 
-        # Group by slot
+        # Left column: equipped slots
+        slot_col_w = 200
+        slot_x = 30
+        slot_h = 60
+        slot_gap = 8
+        self._slot_rects = {}
+
+        for row, slot in enumerate(_SLOT_ORDER):
+            rect = pygame.Rect(slot_x, y0 + row * (slot_h + slot_gap), slot_col_w, slot_h)
+            self._slot_rects[slot] = rect
+            eq_id = equipped.get(slot)
+            piece = gear_map.get(eq_id) if eq_id else None
+
+            bg = (20, 40, 65) if piece else (20, 20, 30)
+            border = (80, 150, 220) if piece else (50, 50, 70)
+            pygame.draw.rect(surface, bg, rect, border_radius=6)
+            pygame.draw.rect(surface, border, rect, 2, border_radius=6)
+
+            slot_s = self._font.render(_SLOT_LABELS[slot], True, (80, 90, 110))
+            surface.blit(slot_s, (rect.x + 8, rect.y + 6))
+            if piece:
+                name_s = self._big.render(piece["name"], True, (80, 180, 240))
+                surface.blit(name_s, (rect.x + 8, rect.y + 26))
+                un_s = self._font.render("[click to unequip]", True, (60, 100, 160))
+                surface.blit(un_s, (rect.x + 8, rect.y + 44))
+            else:
+                empty_s = self._font.render("[Empty]", True, (60, 60, 80))
+                surface.blit(empty_s, (rect.x + 8, rect.y + 26))
+
+        # Right column: inventory grid
+        inv_x = slot_x + slot_col_w + 20
+        inv_w = SCREEN_W - inv_x - 20
+        card_w = inv_w
+        card_h = 52
+        card_gap = 6
+
+        # Group inventory by slot
         by_slot: dict[str, list] = {s: [] for s in _SLOT_ORDER}
-        for g in gear_list:
-            by_slot[g["slot"]].append(g)
+        for gid in inventory:
+            piece = gear_map.get(gid)
+            if piece:
+                by_slot[piece["slot"]].append(piece)
 
-        cols = 2
-        card_w, card_h = 420, 64
-        gap_x, gap_y = 20, 8
-        total_w = cols * card_w + (cols - 1) * gap_x
-        x0 = SCREEN_W // 2 - total_w // 2
-
+        self._inv_rects = []
         row = 0
         for slot in _SLOT_ORDER:
-            items = by_slot[slot]
-            for i, piece in enumerate(items):
-                col = i % cols
-                if i > 0 and col == 0:
-                    row += 1
-                cx = x0 + col * (card_w + gap_x)
-                cy = y0 + row * (card_h + gap_y)
-
-                is_found    = piece["id"] in found
-                is_equipped = equipped.get(piece["slot"]) == piece["id"]
-
-                if is_equipped:
-                    bg, border = (20, 40, 65), (80, 150, 220)
-                elif is_found:
-                    bg, border = (22, 38, 22), GREEN
-                else:
-                    bg, border = (20, 20, 30), (50, 50, 65)
-
-                pygame.draw.rect(surface, bg,     (cx, cy, card_w, card_h), border_radius=6)
-                pygame.draw.rect(surface, border, (cx, cy, card_w, card_h), 2, border_radius=6)
-
-                slot_s = self._font.render(_SLOT_LABELS[piece["slot"]], True, (80, 90, 110))
-                surface.blit(slot_s, (cx + 12, cy + 6))
-
-                if is_found or is_equipped:
-                    name_color = (80, 180, 240) if is_equipped else WHITE
-                    name_s = self._big.render(piece["name"], True, name_color)
-                    surface.blit(name_s, (cx + 12, cy + 26))
-                    desc_s = self._font.render(piece["desc"], True, (150, 180, 160))
-                    surface.blit(desc_s, (cx + card_w // 2, cy + 26))
+            if not by_slot[slot]:
+                continue
+            label_s = self._font.render(_SLOT_LABELS[slot], True, (80, 90, 110))
+            surface.blit(label_s, (inv_x, y0 + row * (card_h + card_gap) - self._inv_scroll))
+            row_y = y0 + row * (card_h + card_gap) + 16 - self._inv_scroll
+            for piece in by_slot[slot]:
+                rect = pygame.Rect(inv_x, row_y, card_w, card_h - 16)
+                is_equipped = equipped.get(slot) == piece["id"]
+                bg = (20, 40, 65) if is_equipped else (22, 38, 22)
+                border = (80, 150, 220) if is_equipped else GREEN
+                if rect.bottom > y0 and rect.top < SCREEN_H - 70:
+                    pygame.draw.rect(surface, bg, rect, border_radius=5)
+                    pygame.draw.rect(surface, border, rect, 2, border_radius=5)
+                    name_s = self._big.render(piece["name"], True,
+                                              (80, 180, 240) if is_equipped else WHITE)
+                    surface.blit(name_s, (rect.x + 8, rect.y + 4))
+                    desc_s = self._font.render(piece["desc"], True, (140, 180, 150))
+                    surface.blit(desc_s, (rect.x + 8, rect.y + 22))
                     if is_equipped:
                         eq_s = self._font.render("[EQUIPPED]", True, (80, 150, 220))
-                        surface.blit(eq_s, (cx + card_w - eq_s.get_width() - 10, cy + 6))
-                else:
-                    lock_s = self._big.render("???", True, (50, 50, 65))
-                    surface.blit(lock_s, (cx + 12, cy + 26))
-                    hint_s = self._font.render("— find in a crate to reveal —", True, (45, 45, 58))
-                    surface.blit(hint_s, (cx + card_w // 2, cy + 26))
-
+                        surface.blit(eq_s, (rect.right - eq_s.get_width() - 8, rect.y + 4))
+                    else:
+                        click_s = self._font.render("[click to equip]", True, (60, 130, 80))
+                        surface.blit(click_s, (rect.right - click_s.get_width() - 8, rect.y + 4))
+                self._inv_rects.append((piece["id"], rect))
+                row_y += card_h - 14
             row += 1
+
+        if not any(by_slot.values()):
+            none_s = self._font.render("No gear in inventory — find crates in runs!", True, (70, 70, 90))
+            surface.blit(none_s, (inv_x, y0 + 20))

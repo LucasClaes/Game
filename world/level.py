@@ -95,9 +95,9 @@ class Level:
         return cls._from_dict(data["levels"][level_index], level_index)
 
     @classmethod
-    def generate(cls, level_num: int) -> "Level":
+    def generate(cls, level_num: int, difficulty: int = 1) -> "Level":
         from world.procgen import generate as _gen
-        return cls._from_dict(_gen(level_num), level_num)
+        return cls._from_dict(_gen(level_num, difficulty), level_num)
 
     @classmethod
     def generate_boss(cls, level_num: int) -> "Level":

@@ -1,4 +1,5 @@
 import math
+import random
 import pygame
 from core.settings import TILE_SIZE, WHITE, ZOMBIE_TYPES, AGGRO_RADIUS
 
@@ -13,6 +14,14 @@ _STYLE = {
     "exploder": {"color": (60,  220, 80),  "glow": (80,  255, 100), "glow_r": 18, "shape": "circle"},
     "healer":   {"color": (200, 100, 220), "glow": (220, 130, 255), "glow_r": 20, "shape": "cross"},
     "lurker":   {"color": (0,   180, 180), "glow": (0,   220, 220), "glow_r": 16, "shape": "diamond"},
+    "crawler":  {"color": (180, 100, 40),  "glow": (220, 130, 60),  "glow_r": 12, "shape": "rect"},
+    "spitter":  {"color": (80,  200, 80),  "glow": (100, 240, 100), "glow_r": 18, "shape": "circle"},
+    "bomber":   {"color": (240, 200, 30),  "glow": (255, 220, 60),  "glow_r": 20, "shape": "triangle"},
+    "shielder": {"color": (100, 150, 220), "glow": (130, 180, 255), "glow_r": 22, "shape": "hex"},
+    "phaser":   {"color": (180, 60,  200), "glow": (220, 80,  255), "glow_r": 18, "shape": "diamond"},
+    "summoner": {"color": (220, 160, 50),  "glow": (255, 200, 80),  "glow_r": 22, "shape": "circle"},
+    "vortex":   {"color": (50,  200, 220), "glow": (80,  240, 255), "glow_r": 20, "shape": "circle"},
+    "behemoth": {"color": (200, 40,  40),  "glow": (255, 60,  60),  "glow_r": 34, "shape": "star"},
 }
 
 
@@ -39,8 +48,11 @@ class Zombie:
             self.max_hp = self.hp
             self.speed *= 1.3
             self.coin_drop = 3
-        self.rect = pygame.Rect(0, 0, self.SIZE, self.SIZE)
+        # Crawler is smaller
+        size = 18 if zombie_type == "crawler" else self.SIZE
+        self.rect = pygame.Rect(0, 0, size, size)
         self.rect.center = (int(self.pos.x), int(self.pos.y))
+        self._draw_size = size
         self.alive = True
         self._state = Zombie.IDLE
         self._hit_flash = 0.0
@@ -52,28 +64,45 @@ class Zombie:
         self._shoot_cooldown = stats.get("shoot_cooldown", 2.0)
         self._shoot_timer = self._shoot_cooldown
 
-        # Exploder
-        self.death_data = {}  # populated on death for exploder
+        # Exploder / Bomber shared
+        self.death_data = {}
 
         # Healer
         self._heal_radius   = stats.get("heal_radius",   0)
         self._heal_amount   = stats.get("heal_amount",   0)
         self._heal_interval = stats.get("heal_interval", 2.0)
         self._heal_timer    = 0.0
-        self._healing_flash = 0.0  # green flash when healing fires
+        self._healing_flash = 0.0
 
         # Lurker
         self._lurk_aggro = stats.get("lurk_aggro", AGGRO_RADIUS)
         self._hidden = zombie_type == "lurker"
 
+        # Phaser
+        self._phase_timer = stats.get("phase_cooldown", 4.0)
+
+        # Summoner
+        self._summon_timer = stats.get("summon_cooldown", 5.0)
+        self._summon_cap   = stats.get("summon_cap", 3)
+
+        # Behemoth slam
+        self._slam_timer       = stats.get("slam_cooldown", 5.0)
+        self._slam_radius      = stats.get("slam_radius", 140)
+        self._slam_damage      = stats.get("slam_damage", 80)
+        self._slam_telegraphing = False
+        self._slam_telegraph_timer = 0.0
+        self.slam_ready = False  # read by playing.py each frame
+
     def update(self, dt: float, player_pos: pygame.Vector2,
                walls: list, tile_grid=None, tile_w: int = 30, tile_h: int = 20,
-               zombies: list = None) -> list:
+               zombies: list = None) -> tuple:
+        """Return (new_enemy_bullets, new_zombies)."""
         if not self.alive:
-            return []
+            return [], []
         self._hit_flash = max(0.0, self._hit_flash - dt)
         self._invincible = max(0.0, self._invincible - dt)
         self._anim += dt
+        self.slam_ready = False
         self._depenetrate(walls)
 
         # Aggro detection: switch to CHASE when player is close enough
@@ -81,10 +110,25 @@ class Zombie:
         if self._state == Zombie.IDLE:
             if (player_pos - self.pos).length() <= aggro_dist:
                 self._state = Zombie.CHASE
-                self._hidden = False  # lurker reveals itself on aggro
+                self._hidden = False
 
         if self._state == Zombie.IDLE:
-            return []
+            return [], []
+
+        # Spitter: stationary, fires acid shots
+        if self.zombie_type == "spitter" and self._shoot_range > 0:
+            dist = (player_pos - self.pos).length()
+            if dist <= self._shoot_range:
+                self._shoot_timer -= dt
+                self.rect.center = (int(self.pos.x), int(self.pos.y))
+                if self._shoot_timer <= 0:
+                    self._shoot_timer = self._shoot_cooldown
+                    direction = (player_pos - self.pos).normalize()
+                    from entities.enemy_bullet import EnemyBullet
+                    b = EnemyBullet(self.pos, direction * 160, 1)
+                    b.spawn_trap = True
+                    return [b], []
+            return [], []
 
         # Ranged zombie: stop and shoot when in range
         if self.zombie_type == "ranged" and self._shoot_range > 0:
@@ -96,8 +140,34 @@ class Zombie:
                     self._shoot_timer = self._shoot_cooldown
                     direction = (player_pos - self.pos).normalize()
                     from entities.enemy_bullet import EnemyBullet
-                    return [EnemyBullet(self.pos, direction * 200, 1)]
-                return []
+                    return [EnemyBullet(self.pos, direction * 200, 1)], []
+                return [], []
+
+        # Phaser: teleport toward player periodically
+        if self.zombie_type == "phaser":
+            self._phase_timer -= dt
+            if self._phase_timer <= 0:
+                self._phase_timer = ZOMBIE_TYPES["phaser"]["phase_cooldown"]
+                dist = (player_pos - self.pos).length()
+                if dist > 0:
+                    direction = (player_pos - self.pos).normalize()
+                    jump = min(ZOMBIE_TYPES["phaser"]["phase_dist"], dist - 20)
+                    if jump > 0:
+                        self.pos += direction * jump
+                        self.rect.center = (int(self.pos.x), int(self.pos.y))
+                self._invincible = 0.3
+
+        # Behemoth slam telegraph
+        if self.zombie_type == "behemoth":
+            self._slam_timer -= dt
+            if self._slam_timer <= 0:
+                self._slam_timer = ZOMBIE_TYPES["behemoth"]["slam_cooldown"]
+                self.slam_ready = True
+            elif self._slam_timer <= 1.0:
+                self._slam_telegraphing = True
+                self._slam_telegraph_timer = self._slam_timer
+            else:
+                self._slam_telegraphing = False
 
         self._path_timer -= dt
         if tile_grid is not None and (self._path_timer <= 0 or not self._path):
@@ -134,7 +204,20 @@ class Zombie:
                             z._hit_flash = 0.0
                             self._healing_flash = 0.3
 
-        return []
+        # Summoner: spawn basic zombies periodically
+        if self.zombie_type == "summoner" and zombies is not None:
+            self._summon_timer -= dt
+            if self._summon_timer <= 0:
+                self._summon_timer = ZOMBIE_TYPES["summoner"]["summon_cooldown"]
+                alive_basic = sum(1 for z in zombies if z.alive and z.zombie_type == "basic")
+                if alive_basic < self._summon_cap:
+                    ox = random.randint(-2, 2)
+                    oy = random.randint(-2, 2)
+                    tx = int(self.pos.x // TILE_SIZE) + ox
+                    ty = int(self.pos.y // TILE_SIZE) + oy
+                    return [], [Zombie(tx, ty, "basic")]
+
+        return [], []
 
     def _depenetrate(self, walls: list):
         for wall in walls:
@@ -178,7 +261,7 @@ class Zombie:
     def take_damage(self, amount: int) -> bool:
         if self._invincible > 0:
             return False
-        self._state = Zombie.CHASE  # always aggro when hit
+        self._state = Zombie.CHASE
         self._hidden = False
         self.hp -= amount
         self._hit_flash = 0.12
@@ -192,6 +275,14 @@ class Zombie:
                     "radius": 80,
                     "damage": 50,
                 }
+            elif self.zombie_type == "bomber":
+                stats = ZOMBIE_TYPES["bomber"]
+                self.death_data = {
+                    "explode": True,
+                    "pos": self.pos.copy(),
+                    "radius": stats["explode_radius"],
+                    "damage": stats["explode_damage"],
+                }
             return True
         return False
 
@@ -202,32 +293,55 @@ class Zombie:
         cy = int(self.pos.y - offset.y)
         style = _STYLE.get(self.zombie_type, _STYLE["basic"])
         body_color = WHITE if self._hit_flash > 0 else style["color"]
+        half = self._draw_size // 2
 
         from systems.gfx import glow
         if self.zombie_type == "exploder":
             danger  = 1.0 - (self.hp / self.max_hp)
             pulse_r = int(style["glow_r"] + danger * 14 + math.sin(self._anim * 6) * 4)
             glow(surface, cx, cy, pulse_r, style["glow"], int(65 + danger * 80))
+        elif self.zombie_type == "bomber":
+            pulse = abs(math.sin(self._anim * (3.0 + 4.0 * (1.0 - self.hp / self.max_hp))))
+            glow(surface, cx, cy, int(style["glow_r"] + pulse * 10), style["glow"], int(65 + pulse * 90))
+        elif self.zombie_type == "phaser" and self._invincible > 0:
+            glow(surface, cx, cy, style["glow_r"] + 8, style["glow"], 150)
+        elif self.zombie_type == "behemoth" and self._slam_telegraphing:
+            t = self._slam_telegraph_timer
+            ring_r = int(20 + (1.0 - t) * self._slam_radius)
+            pygame.draw.circle(surface, (255, 60, 30), (cx, cy), ring_r, 2)
+            glow(surface, cx, cy, style["glow_r"] + 10, (255, 80, 30), 120)
         else:
             glow(surface, cx, cy, style["glow_r"], style["glow"], 65)
 
         shape = style["shape"]
-        half = self.SIZE // 2
 
         # Lurker: draw faint ghost outline only while hidden
         if self.zombie_type == "lurker" and self._hidden:
-            s = pygame.Surface((self.SIZE * 3, self.SIZE * 3), pygame.SRCALPHA)
-            sp = [(self.SIZE * 3 // 2,          self.SIZE * 3 // 2 - half),
-                  (self.SIZE * 3 // 2 + half,   self.SIZE * 3 // 2),
-                  (self.SIZE * 3 // 2,          self.SIZE * 3 // 2 + half),
-                  (self.SIZE * 3 // 2 - half,   self.SIZE * 3 // 2)]
+            sz = self._draw_size
+            s = pygame.Surface((sz * 3, sz * 3), pygame.SRCALPHA)
+            sp = [(sz * 3 // 2,        sz * 3 // 2 - half),
+                  (sz * 3 // 2 + half, sz * 3 // 2),
+                  (sz * 3 // 2,        sz * 3 // 2 + half),
+                  (sz * 3 // 2 - half, sz * 3 // 2)]
             pygame.draw.polygon(s, (0, 220, 220, 40), sp)
-            surface.blit(s, (cx - self.SIZE * 3 // 2, cy - self.SIZE * 3 // 2))
-            return  # skip rest of draw for hidden lurker
+            surface.blit(s, (cx - sz * 3 // 2, cy - sz * 3 // 2))
+            return
+
+        # Shielder: draw shield arc on front
+        if self.zombie_type == "shielder":
+            shield_pts = []
+            for a in range(-45, 46, 10):
+                rad = math.radians(a)
+                sx = cx + int(math.cos(rad) * (half + 6))
+                sy = cy + int(math.sin(rad) * (half + 6))
+                shield_pts.append((sx, sy))
+            if len(shield_pts) > 1:
+                pygame.draw.lines(surface, (130, 200, 255), False, shield_pts, 3)
 
         if shape == "circle":
             pygame.draw.circle(surface, body_color, (cx, cy), half)
-            pygame.draw.circle(surface, (220, 180, 255), (cx, cy), half, 2)
+            ring_col = (100, 255, 120) if self.zombie_type == "summoner" else (220, 180, 255)
+            pygame.draw.circle(surface, ring_col, (cx, cy), half, 2)
         elif shape == "diamond":
             pts = [(cx, cy - half), (cx + half, cy),
                    (cx, cy + half), (cx - half, cy)]
@@ -237,31 +351,60 @@ class Zombie:
             bar_thickness = 8
             color_to_use = (100, 255, 100) if self._healing_flash > 0 else body_color
             pygame.draw.rect(surface, color_to_use,
-                             (cx - half, cy - bar_thickness // 2, self.SIZE, bar_thickness))
+                             (cx - half, cy - bar_thickness // 2, self._draw_size, bar_thickness))
             pygame.draw.rect(surface, color_to_use,
-                             (cx - bar_thickness // 2, cy - half, bar_thickness, self.SIZE))
+                             (cx - bar_thickness // 2, cy - half, bar_thickness, self._draw_size))
             pygame.draw.rect(surface, (220, 150, 255),
-                             (cx - half, cy - bar_thickness // 2, self.SIZE, bar_thickness), 1)
+                             (cx - half, cy - bar_thickness // 2, self._draw_size, bar_thickness), 1)
             pygame.draw.rect(surface, (220, 150, 255),
-                             (cx - bar_thickness // 2, cy - half, bar_thickness, self.SIZE), 1)
+                             (cx - bar_thickness // 2, cy - half, bar_thickness, self._draw_size), 1)
+        elif shape == "triangle":
+            pts = [(cx, cy - half), (cx + half, cy + half), (cx - half, cy + half)]
+            pygame.draw.polygon(surface, body_color, pts)
+            pygame.draw.polygon(surface, (255, 240, 80), pts, 2)
+        elif shape == "hex":
+            pts = []
+            for i in range(6):
+                angle = math.radians(60 * i - 30)
+                pts.append((cx + int(math.cos(angle) * half),
+                             cy + int(math.sin(angle) * half)))
+            pygame.draw.polygon(surface, body_color, pts)
+            pygame.draw.polygon(surface, (160, 210, 255), pts, 2)
+        elif shape == "star":
+            outer, inner = half, half // 2
+            pts = []
+            for i in range(10):
+                r = outer if i % 2 == 0 else inner
+                angle = math.radians(36 * i - 90)
+                pts.append((cx + int(math.cos(angle) * r),
+                             cy + int(math.sin(angle) * r)))
+            pygame.draw.polygon(surface, body_color, pts)
+            pygame.draw.polygon(surface, (255, 120, 80), pts, 2)
         else:
-            draw_rect = self.rect.move(-offset.x, -offset.y)
+            draw_rect = pygame.Rect(cx - half, cy - half, self._draw_size, self._draw_size)
             pygame.draw.rect(surface, body_color, draw_rect, border_radius=5)
             pygame.draw.rect(surface, (255, 130, 130), draw_rect, 2, border_radius=5)
-            # eye dots
-            ex = int(cx + math.cos(self._anim * 0.5) * 3)
             pygame.draw.circle(surface, (255, 230, 230), (cx - 5, cy - 4), 3)
             pygame.draw.circle(surface, (255, 230, 230), (cx + 5, cy - 4), 3)
             pygame.draw.circle(surface, (60, 0, 0), (cx - 5, cy - 4), 1)
             pygame.draw.circle(surface, (60, 0, 0), (cx + 5, cy - 4), 1)
 
+        # Phaser: phase shimmer when invincible
+        if self.zombie_type == "phaser" and self._invincible > 0:
+            alpha = int(self._invincible / 0.3 * 120)
+            s = pygame.Surface((self._draw_size * 2, self._draw_size * 2), pygame.SRCALPHA)
+            pygame.draw.circle(s, (200, 100, 255, alpha),
+                                (self._draw_size, self._draw_size), half + 4)
+            surface.blit(s, (cx - self._draw_size, cy - self._draw_size))
+
         # Elite outline
         if self.elite:
-            elite_r = pygame.Rect(cx - half - 3, cy - half - 3, self.SIZE + 6, self.SIZE + 6)
+            elite_r = pygame.Rect(cx - half - 3, cy - half - 3,
+                                  self._draw_size + 6, self._draw_size + 6)
             pygame.draw.rect(surface, (255, 220, 0), elite_r, 2, border_radius=7)
 
         # HP bar
-        bar_w = self.SIZE + 4
+        bar_w = self._draw_size + 4
         bar_h = 4
         bx = cx - bar_w // 2
         by = cy - half - 9

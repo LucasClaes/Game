@@ -12,8 +12,11 @@ from systems.particles import ParticleSystem
 from ui.hud import HUD
 from ui.minimap import Minimap
 
-_GEAR_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "gear.json")
-_GEAR_DEFS_CACHE: dict | None = None
+_GEAR_PATH  = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "gear.json")
+_PERKS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "perks.json")
+_GEAR_DEFS_CACHE:  dict | None = None
+_PERK_DEFS_CACHE:  dict | None = None
+
 
 def _get_gear_defs() -> dict:
     global _GEAR_DEFS_CACHE
@@ -25,6 +28,19 @@ def _get_gear_defs() -> dict:
         except Exception:
             _GEAR_DEFS_CACHE = {}
     return _GEAR_DEFS_CACHE
+
+
+def _get_perk_effects() -> dict:
+    """Return {perk_id: effects_list}."""
+    global _PERK_DEFS_CACHE
+    if _PERK_DEFS_CACHE is None:
+        try:
+            with open(_PERKS_PATH) as f:
+                raw = json.load(f)
+            _PERK_DEFS_CACHE = {p["id"]: p.get("effects", []) for p in raw["perks"]}
+        except Exception:
+            _PERK_DEFS_CACHE = {}
+    return _PERK_DEFS_CACHE
 
 
 class PlayingScreen:
@@ -64,14 +80,18 @@ class PlayingScreen:
         self._elapsed = 0.0
         self._damage_numbers = []
         # Perk runtime state
-        self._iron_will_active = False
-        self._second_wind_used = False
+        self._iron_will_charges = 0
+        self._second_wind_remaining = 0
         self._vampiric_kills = 0
         self._adrenaline_timer = 0.0
         self._adrenaline_active = False
+        self._adrenaline_buff_amount = 1.15
         self._overclock_timer = 0.0
         self._overclock_active = False
         self._prev_dashing = False
+        # Extra runtime
+        self._acid_traps: list = []  # [{rect, timer, dmg_timer}]
+        self._hp_drain_timer = 0.0
         # Challenge / difficulty
         self._challenge_modifier: str | None = None
         self._challenge_id: str | None = None
@@ -89,6 +109,7 @@ class PlayingScreen:
         self._challenge_reward   = kwargs.get("challenge_reward", 0)
         level_index = self._player_data.get("current_level", 0)
 
+        diff_idx = self._player_data.get("difficulty", 1)
         is_boss = level_index > 0 and level_index % 4 == 0
         if is_boss:
             self._level = Level.generate_boss(level_index)
@@ -108,7 +129,7 @@ class PlayingScreen:
                     boss_level=boss_level,
                 )
         else:
-            self._level = Level.generate(level_index)
+            self._level = Level.generate(level_index, difficulty=diff_idx)
             self._boss = None
 
         self._player = Player(
@@ -152,15 +173,21 @@ class PlayingScreen:
         self._damage_numbers = []
 
         # Perk runtime reset per level
-        perks = self._player_data.get("run_perks", [])
-        self._iron_will_active = "iron_will" in perks
-        self._second_wind_used = False
+        efx = _get_perk_effects()
+        iw_lv = self._perk_level("iron_will")
+        self._iron_will_charges = efx["iron_will"][iw_lv - 1] if iw_lv > 0 else 0
+        self._iron_will_charges += getattr(self._player, "first_hit_immune_charges", 0)
+        sw_lv = self._perk_level("second_wind")
+        self._second_wind_remaining = efx["second_wind"][sw_lv - 1] if sw_lv > 0 else 0
         self._vampiric_kills = 0
         self._adrenaline_timer = 0.0
         self._adrenaline_active = False
+        self._adrenaline_buff_amount = 1.0
         self._overclock_timer = 0.0
         self._overclock_active = False
         self._prev_dashing = False
+        self._acid_traps = []
+        self._hp_drain_timer = getattr(self._player, "hp_drain_interval", 0.0)
 
         # Apply difficulty multipliers
         from core.settings import DIFFICULTIES
@@ -215,19 +242,33 @@ class PlayingScreen:
         except Exception:
             pass
 
-    def _perks(self) -> list:
-        return self._player_data.get("run_perks", []) if self._player_data else []
+    def _perks(self) -> dict:
+        rp = (self._player_data.get("run_perks") or {}) if self._player_data else {}
+        if isinstance(rp, list):
+            return {pid: 1 for pid in rp}
+        return rp
+
+    def _perk_level(self, pid: str) -> int:
+        return self._perks().get(pid, 0)
+
+    def _perk_effect(self, pid: str):
+        lv = self._perk_level(pid)
+        if lv <= 0:
+            return None
+        effects = _get_perk_effects().get(pid, [])
+        if not effects:
+            return None
+        return effects[min(lv - 1, len(effects) - 1)]
 
     def _take_player_damage(self, amount: int) -> bool:
-        perks = self._perks()
-        if "iron_will" in perks and self._iron_will_active:
-            self._iron_will_active = False
+        if self._iron_will_charges > 0:
+            self._iron_will_charges -= 1
             self._flash_timer = 0.4
             self._flash_color = (180, 255, 180)
             return False
         died = self._player.take_damage(amount)
-        if died and "second_wind" in perks and not self._second_wind_used:
-            self._second_wind_used = True
+        if died and self._second_wind_remaining > 0:
+            self._second_wind_remaining -= 1
             self._player.hp = 1
             self._player.invincible_timer = self._player.INVINCIBLE_DURATION
             self._sfx("level_up")
@@ -236,14 +277,17 @@ class PlayingScreen:
             return False
         if not died and self._player.invincible_timer >= self._player.INVINCIBLE_DURATION:
             self._took_damage = True
-            self._on_player_hurt(perks)
+            self._on_player_hurt()
         return died
 
-    def _on_player_hurt(self, perks: list):
-        if "adrenaline" in perks and not self._adrenaline_active:
+    def _on_player_hurt(self):
+        adr_lv = self._perk_level("adrenaline")
+        if adr_lv > 0 and not self._adrenaline_active:
             self._adrenaline_active = True
             self._adrenaline_timer = 8.0
-            self._player.speed *= 1.15
+            buff = 1.0 + _get_perk_effects()["adrenaline"][min(adr_lv - 1, 2)]
+            self._adrenaline_buff_amount = buff
+            self._player.speed *= buff
             self._flash_timer = 0.3
             self._flash_color = (255, 140, 0)
         self._combo = 0
@@ -298,12 +342,11 @@ class PlayingScreen:
             return
 
         # Perk timers
-        perks = self._perks()
         if self._adrenaline_active:
             self._adrenaline_timer -= dt
             if self._adrenaline_timer <= 0:
                 self._adrenaline_active = False
-                self._player.speed /= 1.15
+                self._player.speed /= self._adrenaline_buff_amount
 
         if self._overclock_active:
             self._overclock_timer -= dt
@@ -311,6 +354,15 @@ class PlayingScreen:
                 self._overclock_active = False
                 self._player.swing_cooldown /= 0.70
                 self._player.shoot_cooldown /= 0.70
+
+        # Crown of Thorns HP drain
+        drain = getattr(self._player, "hp_drain_interval", 0.0)
+        if drain > 0:
+            self._hp_drain_timer -= dt
+            if self._hp_drain_timer <= 0:
+                self._hp_drain_timer = drain
+                if self._player.hp > 1:
+                    self._player.hp -= 1
 
         # Combo timer decay
         if self._combo_timer > 0:
@@ -333,9 +385,10 @@ class PlayingScreen:
         dashing_now = self._player.is_dashing
         if dashing_now and not self._prev_dashing:
             self._sfx("dash")
-        if dashing_now and not self._prev_dashing and "overclock" in perks and not self._overclock_active:
+        oc_lv = self._perk_level("overclock")
+        if dashing_now and not self._prev_dashing and oc_lv > 0 and not self._overclock_active:
             self._overclock_active = True
-            self._overclock_timer = 6.0
+            self._overclock_timer = _get_perk_effects()["overclock"][min(oc_lv - 1, 2)]
             self._player.swing_cooldown *= 0.70
             self._player.shoot_cooldown *= 0.70
             self._flash_timer = 0.3
@@ -354,8 +407,10 @@ class PlayingScreen:
         self._crates = [c for c in self._crates if c.alive]
 
         # Magnet perk: auto-collect nearby coins
-        if "magnet" in perks:
-            magnet_rect = self._player.rect.inflate(128, 128)
+        mag_lv = self._perk_level("magnet")
+        if mag_lv > 0:
+            mag_r = _get_perk_effects()["magnet"][min(mag_lv - 1, 2)]
+            magnet_rect = self._player.rect.inflate(mag_r * 2, mag_r * 2)
             for coin in self._level.coins:
                 if not coin.collected and magnet_rect.colliderect(coin.rect):
                     coin.collected = True
@@ -364,11 +419,40 @@ class PlayingScreen:
                     self._particles.emit(coin.rect.centerx, coin.rect.centery, 5, (255, 215, 0))
 
         # Update zombies
+        _new_zom_batch = []
         for zombie in self._level.zombies:
-            new_eb = zombie.update(dt, self._player.pos, self._level.walls,
-                                   self._level.tile_grid, self._level.tile_w, self._level.tile_h,
-                                   zombies=self._level.zombies)
+            new_eb, new_zom = zombie.update(dt, self._player.pos, self._level.walls,
+                                             self._level.tile_grid, self._level.tile_w,
+                                             self._level.tile_h, zombies=self._level.zombies)
             self._enemy_bullets.extend(new_eb)
+            if new_zom:
+                _new_zom_batch.extend(new_zom)
+            # Vortex pull
+            if zombie.zombie_type == "vortex" and zombie.alive:
+                from core.settings import ZOMBIE_TYPES as _ZT
+                vr = _ZT["vortex"]["vortex_radius"]
+                vs = _ZT["vortex"]["vortex_strength"]
+                delta = zombie.pos - self._player.pos
+                dist = delta.length()
+                if 0 < dist < vr:
+                    pull = delta.normalize() * vs * dt
+                    self._player.pos += pull
+                    self._player.rect.center = (int(self._player.pos.x), int(self._player.pos.y))
+            # Behemoth slam
+            if zombie.zombie_type == "behemoth" and zombie.slam_ready:
+                self._camera.shake(0.5, 10)
+                self._particles.emit(int(zombie.pos.x), int(zombie.pos.y), 20, (200, 100, 50))
+                from core.settings import ZOMBIE_TYPES as _ZT
+                sr = _ZT["behemoth"]["slam_radius"]
+                sd = _ZT["behemoth"]["slam_damage"]
+                if math.hypot(self._player.pos.x - zombie.pos.x,
+                               self._player.pos.y - zombie.pos.y) < sr:
+                    died = self._take_player_damage(sd)
+                    if died:
+                        self._on_player_died()
+                        return
+        if _new_zom_batch:
+            self._level.zombies.extend(_new_zom_batch)
 
         # Update boss
         if self._boss and self._boss.alive:
@@ -396,7 +480,25 @@ class PlayingScreen:
         # Update enemy bullets
         for eb in self._enemy_bullets:
             eb.update(dt, self._level.walls, self._level.pixel_w, self._level.pixel_h)
+        # Spitter acid traps: create when acid bullet dies
+        for eb in self._enemy_bullets:
+            if not eb.alive and getattr(eb, "spawn_trap", False):
+                r = pygame.Rect(int(eb.pos.x) - 48, int(eb.pos.y) - 48, 96, 96)
+                self._acid_traps.append({"rect": r, "timer": 4.0, "dmg_timer": 0.0})
         self._enemy_bullets = [eb for eb in self._enemy_bullets if eb.alive]
+
+        # Update acid traps
+        for trap in self._acid_traps:
+            trap["timer"] -= dt
+            trap["dmg_timer"] -= dt
+            if trap["dmg_timer"] <= 0:
+                trap["dmg_timer"] = 0.75
+                if self._player.rect.colliderect(trap["rect"]):
+                    died = self._take_player_damage(1)
+                    if died:
+                        self._on_player_died()
+                        return
+        self._acid_traps = [t for t in self._acid_traps if t["timer"] > 0]
 
         # Enemy bullet vs player
         for eb in self._enemy_bullets:
@@ -448,13 +550,28 @@ class PlayingScreen:
                 if zid in bullet.pierce_hit:
                     continue
                 if bullet.rect.colliderect(zombie.rect):
+                    # Shielder: deflect bullets from front arc
+                    if zombie.zombie_type == "shielder":
+                        facing = zombie.pos - self._player.pos
+                        if facing.length() > 0:
+                            facing = facing.normalize()
+                            bdir = pygame.Vector2(bullet.vel) if hasattr(bullet, "vel") else pygame.Vector2(0, 0)
+                            if bdir.length() > 0:
+                                bdir = bdir.normalize()
+                                if facing.dot(bdir) > 0.5:
+                                    bullet.alive = False
+                                    self._particles.emit(int(zombie.pos.x), int(zombie.pos.y), 4, (130, 200, 255))
+                                    continue
                     bullet.pierce_hit.add(zid)
                     if bullet.pierce <= 0:
                         bullet.alive = False
                     else:
                         bullet.pierce -= 1
-                    killed = zombie.take_damage(bullet.damage)
-                    self._spawn_damage_number(zombie.pos, bullet.damage)
+                    dmg = bullet.damage
+                    if self._player.execute_bonus > 0 and zombie.hp < zombie.max_hp * 0.25:
+                        dmg = int(dmg * (1 + self._player.execute_bonus))
+                    killed = zombie.take_damage(dmg)
+                    self._spawn_damage_number(zombie.pos, dmg)
                     if killed:
                         if self._on_zombie_killed(zombie):
                             return
@@ -502,8 +619,11 @@ class PlayingScreen:
                     continue
                 if hb.colliderect(zombie.rect):
                     self._player._hit_this_swing.add(id(zombie))
-                    killed = zombie.take_damage(self._player.melee_damage)
-                    self._spawn_damage_number(zombie.pos, self._player.melee_damage)
+                    dmg = self._player.melee_damage
+                    if self._player.execute_bonus > 0 and zombie.hp < zombie.max_hp * 0.25:
+                        dmg = int(dmg * (1 + self._player.execute_bonus))
+                    killed = zombie.take_damage(dmg)
+                    self._spawn_damage_number(zombie.pos, dmg)
                     self._chain_aggro(zombie)
                     if killed:
                         if self._on_zombie_killed(zombie):
@@ -559,15 +679,35 @@ class PlayingScreen:
         # Zombie contact damage
         for zombie in self._level.zombies:
             if self._player.rect.colliderect(zombie.rect):
-                died = self._take_player_damage(zombie.damage)
-                if died:
-                    self._on_player_died()
-                    return
-                else:
-                    self._sfx("player_hurt")
-                    self._camera.shake(0.2, 5)
-                    self._flash_timer = 0.25
-                    self._flash_color = (200, 0, 0)
+                if zombie.zombie_type == "bomber":
+                    # Bomber detonates on contact
+                    from core.settings import ZOMBIE_TYPES as _ZT
+                    stats = _ZT["bomber"]
+                    zombie.alive = False
+                    self._award_coins(zombie.coin_drop)
+                    self._sfx("bomb_explode")
+                    self._kill_count += 1
+                    self._player_data["total_kills"] = self._player_data.get("total_kills", 0) + 1
+                    self._particles.emit(int(zombie.pos.x), int(zombie.pos.y), 20, (255, 200, 50))
+                    self._camera.shake(0.4, 8)
+                    self._flash_timer = 0.3
+                    self._flash_color = (255, 200, 50)
+                    if math.hypot(self._player.pos.x - zombie.pos.x,
+                                   self._player.pos.y - zombie.pos.y) < stats["explode_radius"]:
+                        died = self._take_player_damage(stats["explode_damage"])
+                        if died:
+                            self._on_player_died()
+                            return
+                elif zombie.damage > 0:
+                    died = self._take_player_damage(zombie.damage)
+                    if died:
+                        self._on_player_died()
+                        return
+                    else:
+                        self._sfx("player_hurt")
+                        self._camera.shake(0.2, 5)
+                        self._flash_timer = 0.25
+                        self._flash_color = (200, 0, 0)
 
         # Boss contact damage
         if self._boss and self._boss.alive:
@@ -596,7 +736,6 @@ class PlayingScreen:
         })
 
     def _on_zombie_killed(self, zombie) -> bool:
-        perks = self._perks()
         self._award_coins(zombie.coin_drop)
         self._sfx("enemy_die")
         self._kill_count += 1
@@ -607,6 +746,10 @@ class PlayingScreen:
             "fast": (255, 140, 30), "tank": (160, 60, 220),
             "ranged": (180, 80, 200), "exploder": (60, 220, 80),
             "healer": (200, 100, 220), "lurker": (0, 180, 180),
+            "crawler": (180, 100, 40), "spitter": (80, 200, 80),
+            "bomber": (240, 200, 30), "shielder": (100, 150, 220),
+            "phaser": (180, 60, 200), "summoner": (220, 160, 50),
+            "vortex": (50, 200, 220), "behemoth": (200, 40, 40),
         }
         pcolor = _type_colors.get(zombie.zombie_type, (200, 60, 60))
         self._particles.emit(zombie.pos.x, zombie.pos.y, 12, pcolor)
@@ -615,30 +758,49 @@ class PlayingScreen:
         self._combo += 1
         self._combo_timer = 4.0
 
-        # Vampiric
-        if "vampiric" in perks:
+        # Vampiric: level-scaled kills_needed
+        vamp_lv = self._perk_level("vampiric")
+        if vamp_lv > 0:
+            kills_needed = _get_perk_effects()["vampiric"][min(vamp_lv - 1, 2)]
             self._vampiric_kills += 1
-            if self._vampiric_kills >= 10:
+            if self._vampiric_kills >= kills_needed:
                 self._vampiric_kills = 0
                 self._player.hp = min(self._player.hp + 1, self._player.max_hp)
                 self._particles.emit(int(self._player.pos.x), int(self._player.pos.y), 10, (60, 220, 80))
                 self._flash_timer = 0.3
                 self._flash_color = (60, 220, 80)
 
-        # Explosive death perk
-        if "explosive_death" in perks:
+        # Explosive death perk: level-scaled damage and radius
+        exp_lv = self._perk_level("explosive_death")
+        if exp_lv > 0:
+            exp_vals = _get_perk_effects()["explosive_death"][min(exp_lv - 1, 2)]
+            exp_dmg, exp_r = exp_vals[0], exp_vals[1]
             self._sfx("bomb_explode")
             for other in self._level.zombies:
                 if other is not zombie and other.alive:
-                    if (other.pos - zombie.pos).length() <= 80:
-                        other.take_damage(30)
+                    if (other.pos - zombie.pos).length() <= exp_r:
+                        other.take_damage(exp_dmg)
 
-        # Bounty hunter: elite zombie always drops a crate
-        if "bounty_hunter" in perks and zombie.elite:
+        # Bounty hunter: elite zombie drops crate + coin bonus
+        bh_lv = self._perk_level("bounty_hunter")
+        if bh_lv > 0 and zombie.elite:
+            from entities.crate import LootCrate
+            self._crates.append(LootCrate.from_pixel(zombie.pos.x, zombie.pos.y))
+            coin_bonus = _get_perk_effects()["bounty_hunter"][min(bh_lv - 1, 2)]
+            if coin_bonus > 1.0:
+                bonus = int(zombie.coin_drop * (coin_bonus - 1.0) * self._diff_coin_mult)
+                self._coins_earned_this_run += bonus
+                self._player_data["coins"] += bonus
+
+        # Difficulty bonus crate drop on kill
+        from core.settings import DIFFICULTIES
+        diff_idx = self._player_data.get("difficulty", 1)
+        crate_chance = DIFFICULTIES[diff_idx].get("crate_chance", 0.0)
+        if crate_chance > 0 and random.random() < crate_chance:
             from entities.crate import LootCrate
             self._crates.append(LootCrate.from_pixel(zombie.pos.x, zombie.pos.y))
 
-        # Exploder AOE on death
+        # Exploder / Bomber AOE on death
         if zombie.death_data.get("explode"):
             exp_pos = zombie.death_data["pos"]
             exp_r   = zombie.death_data["radius"]
@@ -660,18 +822,36 @@ class PlayingScreen:
         gear_defs = _get_gear_defs()
         if not gear_defs:
             return
-        equipped = self._player_data.get("gear", {})
-        slots = ["helm", "chest", "boots", "gloves"]
 
-        # Weight toward unequipped slots
-        unequipped = [g for g in gear_defs.values() if equipped.get(g["slot"]) != g["id"]]
-        pool = unequipped if unequipped else list(gear_defs.values())
-        piece = random.choice(pool)
+        diff_idx = self._player_data.get("difficulty", 1)
+        inventory = self._player_data.setdefault("inventory", [])
 
-        if "gear" not in self._player_data:
-            self._player_data["gear"] = {}
-        self._player_data["gear"][piece["slot"]] = piece["id"]
+        # Filter out gear locked to higher difficulties
+        pool = [g for g in gear_defs.values()
+                if g.get("min_difficulty", 0) <= diff_idx]
+        if not pool:
+            pool = list(gear_defs.values())
 
+        # Weight toward unowned pieces
+        unowned = [g for g in pool if g["id"] not in inventory]
+        if unowned:
+            piece = random.choice(unowned)
+        else:
+            # Pity duplicate: 60% chance award coins instead
+            if random.random() < 0.60:
+                pity_coins = int(30 * gear_defs.get("crate_chance", 1))
+                pity_coins = 30
+                self._award_coins(pity_coins)
+                self._pickup_text = "Duplicate gear! (+30 coins)"
+                self._pickup_timer = 2.5
+                self._sfx("coin")
+                self._particles.emit(crate.rect.centerx, crate.rect.centery, 8, (255, 215, 0))
+                return
+            piece = random.choice(pool)
+
+        # Add to inventory and found_gear (no auto-equip)
+        if piece["id"] not in inventory:
+            inventory.append(piece["id"])
         found = self._player_data.setdefault("found_gear", [])
         if piece["id"] not in found:
             found.append(piece["id"])
@@ -680,7 +860,7 @@ class PlayingScreen:
         write_save(self._player_data)
         self._run_achievements()
 
-        self._pickup_text = f"Found: {piece['name']}!"
+        self._pickup_text = f"Found: {piece['name']}!  (Equip in Codex)"
         self._pickup_timer = 3.0
         self._sfx("crate_open")
         self._particles.emit(crate.rect.centerx, crate.rect.centery, 14, (255, 200, 50))
@@ -776,10 +956,12 @@ class PlayingScreen:
             self._sfx("shield_activate")
 
     def _award_coins(self, amount: int):
-        perks = self._perks()
         amount = int(amount * self._diff_coin_mult)
-        if "lucky_coins" in perks and random.random() < 0.5:
-            amount *= 2
+        lc_lv = self._perk_level("lucky_coins")
+        if lc_lv > 0:
+            chance = _get_perk_effects()["lucky_coins"][min(lc_lv - 1, 2)]
+            if random.random() < chance:
+                amount *= 2
         mult = 1.0 + (self._combo // 5) * 0.5
         mult = min(mult, 3.0)
         amount = int(amount * mult)
@@ -812,10 +994,13 @@ class PlayingScreen:
             self._complete_delay = 0.0
             return
 
-        # Update best level
+        # Update best level (global + per-difficulty)
         level_num = self._level.number
         if level_num + 1 > self._player_data.get("best_level", 0):
             self._player_data["best_level"] = level_num + 1
+        diff_idx = str(self._player_data.get("difficulty", 1))
+        bb = self._player_data.setdefault("best_level_by_diff", {})
+        bb[diff_idx] = max(bb.get(diff_idx, 0), level_num + 1)
 
         # Per-level achievement checks
         extra: dict = {}
@@ -857,6 +1042,15 @@ class PlayingScreen:
             cx, cy = dr.centerx, dr.centery
             for ddx, ddy in ((0, -7), (0, 7), (-7, 0), (7, 0)):
                 pygame.draw.line(surface, (220, 80, 50), (cx, cy), (cx + ddx, cy + ddy), 2)
+
+        # Acid traps (from spitter)
+        for trap in self._acid_traps:
+            dr = trap["rect"].move(-self._camera.offset.x, -self._camera.offset.y)
+            alpha = int(min(200, trap["timer"] / 4.0 * 160 + 40))
+            acid_surf = pygame.Surface((dr.width, dr.height), pygame.SRCALPHA)
+            acid_surf.fill((60, 220, 60, alpha))
+            surface.blit(acid_surf, dr.topleft)
+            pygame.draw.rect(surface, (80, 255, 80), dr, 1)
 
         # Barrels
         for barrel in self._barrels:
@@ -917,14 +1111,18 @@ class PlayingScreen:
             surface.blit(bg, (SCREEN_W // 2 - bg.get_width() // 2, py))
             surface.blit(ps, (SCREEN_W // 2 - ps.get_width() // 2, py + 4))
 
-        # Difficulty label (only when not Normal)
+        # Difficulty label with coin multiplier
         diff_idx = self._player_data.get("difficulty", 1) if self._player_data else 1
         if diff_idx != 1:
             from core.settings import DIFFICULTIES
             _DIFF_COLORS = [(50, 200, 80), (200, 200, 200), (255, 140, 0), (220, 50, 50)]
-            diff_name = DIFFICULTIES[diff_idx]["name"]
+            diff = DIFFICULTIES[diff_idx]
+            coin_mult = diff["coins"]
+            diff_label = diff["name"].upper()
+            if coin_mult != 1.0:
+                diff_label += f"  ×{coin_mult:.1f} coins"
             dc = _DIFF_COLORS[diff_idx]
-            ds = self._font.render(diff_name.upper(), True, dc)
+            ds = self._font.render(diff_label, True, dc)
             surface.blit(ds, (SCREEN_W // 2 - ds.get_width() // 2, 4))
 
         # Challenge modifier label

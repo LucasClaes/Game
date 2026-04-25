@@ -1,10 +1,10 @@
 VERSION = "v1.0.0"
 
 DIFFICULTIES = [
-    {"name": "Easy",      "hp": 0.70, "speed": 0.80, "damage": 0.75, "coins": 1.25},
-    {"name": "Normal",    "hp": 1.00, "speed": 1.00, "damage": 1.00, "coins": 1.00},
-    {"name": "Hard",      "hp": 1.40, "speed": 1.20, "damage": 1.25, "coins": 0.85},
-    {"name": "Nightmare", "hp": 2.00, "speed": 1.50, "damage": 1.75, "coins": 0.70},
+    {"name": "Easy",      "hp": 0.70, "speed": 0.80, "damage": 0.75, "coins": 0.85, "crate_chance": 0.00, "spawn_count_mult": 0.85},
+    {"name": "Normal",    "hp": 1.00, "speed": 1.00, "damage": 1.00, "coins": 1.00, "crate_chance": 0.01, "spawn_count_mult": 1.00},
+    {"name": "Hard",      "hp": 1.40, "speed": 1.20, "damage": 1.25, "coins": 1.50, "crate_chance": 0.03, "spawn_count_mult": 1.15},
+    {"name": "Nightmare", "hp": 2.00, "speed": 1.50, "damage": 1.75, "coins": 2.50, "crate_chance": 0.06, "spawn_count_mult": 1.35},
 ]
 
 SCREEN_W = 960
@@ -35,6 +35,21 @@ ZOMBIE_TYPES = {
                  "heal_radius": 80, "heal_amount": 15, "heal_interval": 2.0},
     "lurker":   {"hp": 50,  "speed": 120, "damage": 2, "coin_drop": 10,
                  "lurk_aggro": 120},
+    # New enemy types
+    "crawler":  {"hp": 25,  "speed": 110, "damage": 1, "coin_drop": 3},
+    "spitter":  {"hp": 50,  "speed": 0,   "damage": 1, "coin_drop": 8,
+                 "shoot_range": 240, "shoot_cooldown": 3.0},
+    "bomber":   {"hp": 80,  "speed": 70,  "damage": 0, "coin_drop": 15,
+                 "explode_radius": 110, "explode_damage": 60},
+    "shielder": {"hp": 90,  "speed": 60,  "damage": 1, "coin_drop": 20},
+    "phaser":   {"hp": 60,  "speed": 80,  "damage": 2, "coin_drop": 22,
+                 "phase_cooldown": 4.0, "phase_dist": 96},
+    "summoner": {"hp": 100, "speed": 50,  "damage": 1, "coin_drop": 28,
+                 "summon_cooldown": 5.0, "summon_cap": 3},
+    "vortex":   {"hp": 80,  "speed": 40,  "damage": 1, "coin_drop": 30,
+                 "vortex_radius": 200, "vortex_strength": 60},
+    "behemoth": {"hp": 350, "speed": 35,  "damage": 4, "coin_drop": 50,
+                 "slam_cooldown": 5.0, "slam_radius": 140, "slam_damage": 80},
 }
 
 AGGRO_RADIUS       = 200   # px — zombie detection range

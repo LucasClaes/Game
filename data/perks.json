@@ -1,16 +1,16 @@
 {
   "perks": [
-    {"id": "vampiric",        "name": "Vampiric",        "desc": "Heal 1 HP every 10 kills"},
-    {"id": "adrenaline",      "name": "Adrenaline",      "desc": "+15% speed for 8s after taking damage"},
-    {"id": "lucky_coins",     "name": "Lucky Coins",     "desc": "50% chance to double all coin drops"},
-    {"id": "juggernaut",      "name": "Juggernaut",      "desc": "+1 max HP but -15% move speed"},
-    {"id": "sharpshooter",    "name": "Sharpshooter",    "desc": "Bullets pierce through 1 extra enemy"},
-    {"id": "glass_cannon",    "name": "Glass Cannon",    "desc": "+40% damage but -1 max HP"},
-    {"id": "magnet",          "name": "Magnet",          "desc": "Auto-collect coins within 64px"},
-    {"id": "second_wind",     "name": "Second Wind",     "desc": "Once per level: survive a killing blow at 1 HP"},
-    {"id": "explosive_death", "name": "Explosive Death", "desc": "Enemies explode for 30 damage in 80px on death"},
-    {"id": "iron_will",       "name": "Iron Will",       "desc": "First hit each level deals no damage"},
-    {"id": "overclock",       "name": "Overclock",       "desc": "+30% fire rate for 6s after dashing"},
-    {"id": "bounty_hunter",   "name": "Bounty Hunter",   "desc": "Elite zombies always drop a loot crate"}
+    {"id": "vampiric",        "name": "Vampiric",        "desc": "Heal 1 HP every 10/7/5 kills",                "effects": [10, 7, 5]},
+    {"id": "adrenaline",      "name": "Adrenaline",      "desc": "+15/25/40% speed for 8s after taking damage", "effects": [0.15, 0.25, 0.40]},
+    {"id": "lucky_coins",     "name": "Lucky Coins",     "desc": "50/65/80% chance to double coin drops",       "effects": [0.50, 0.65, 0.80]},
+    {"id": "juggernaut",      "name": "Juggernaut",      "desc": "+1/2/3 max HP but -15% move speed",           "effects": [1, 2, 3]},
+    {"id": "sharpshooter",    "name": "Sharpshooter",    "desc": "Bullets pierce 1/2/3 extra enemies",          "effects": [1, 2, 3]},
+    {"id": "glass_cannon",    "name": "Glass Cannon",    "desc": "+40/55/75% damage but -1 max HP",             "effects": [1.40, 1.55, 1.75]},
+    {"id": "magnet",          "name": "Magnet",          "desc": "Auto-collect coins within 64/96/128px",       "effects": [64, 96, 128]},
+    {"id": "second_wind",     "name": "Second Wind",     "desc": "Survive killing blows 1/2/3 times per level", "effects": [1, 2, 3]},
+    {"id": "explosive_death", "name": "Explosive Death", "desc": "Enemies explode on death (30/50/75 dmg)",     "effects": [[30, 80], [50, 100], [75, 120]]},
+    {"id": "iron_will",       "name": "Iron Will",       "desc": "First 1/2/3 hits each level deal no damage",  "effects": [1, 2, 3]},
+    {"id": "overclock",       "name": "Overclock",       "desc": "+30% fire rate for 6/9/13s after dashing",    "effects": [6, 9, 13]},
+    {"id": "bounty_hunter",   "name": "Bounty Hunter",   "desc": "Elite drops crate + 1.0/1.5/2.0x coin bonus","effects": [1.0, 1.5, 2.0]}
   ]
 }

@@ -59,12 +59,22 @@ class LevelCompleteScreen:
             pass
 
     def _setup_perk_phase(self):
-        owned = self._player_data.get("run_perks", []) if self._player_data else []
-        if len(owned) >= _MAX_PERKS:
-            self._perk_phase = False
-            return
+        owned = self._player_data.get("run_perks", {}) if self._player_data else {}
+        if isinstance(owned, list):
+            owned = {pid: 1 for pid in owned}
         all_perks = _load_perks()
-        available = [p for p in all_perks if p["id"] not in owned]
+
+        # Can offer: not owned yet (if under distinct-perk cap) OR owned but < Lv3
+        distinct_count = sum(1 for lv in owned.values() if lv > 0)
+        available = []
+        for p in all_perks:
+            lv = owned.get(p["id"], 0)
+            if lv >= 3:
+                continue  # maxed
+            if lv == 0 and distinct_count >= _MAX_PERKS:
+                continue  # can't add new distinct perk
+            available.append(p)
+
         if not available:
             self._perk_phase = False
             return
@@ -108,9 +118,11 @@ class LevelCompleteScreen:
 
     def _pick_perk(self, index: int):
         perk = self._offered_perks[index]
-        perks = self._player_data.setdefault("run_perks", [])
-        if perk["id"] not in perks:
-            perks.append(perk["id"])
+        perks = self._player_data.setdefault("run_perks", {})
+        if isinstance(perks, list):
+            perks = {pid: 1 for pid in perks}
+            self._player_data["run_perks"] = perks
+        perks[perk["id"]] = perks.get(perk["id"], 0) + 1
         try:
             from systems.audio import audio
             audio.play("perk_get")
@@ -190,21 +202,36 @@ class LevelCompleteScreen:
         x0 = SCREEN_W // 2 - total_w // 2
         card_y = 238
 
+        owned = self._player_data.get("run_perks", {}) if self._player_data else {}
+        if isinstance(owned, list):
+            owned = {pid: 1 for pid in owned}
+
         self._perk_rects = []
         for i, perk in enumerate(self._offered_perks):
             cx = x0 + i * (card_w + gap)
             rect = pygame.Rect(cx, card_y, card_w, card_h)
             self._perk_rects.append(rect)
             selected = i == self._perk_sel
-            bg = (30, 60, 40) if selected else (18, 32, 22)
-            border = GREEN if selected else (40, 70, 45)
+            cur_lv = owned.get(perk["id"], 0)
+            leveling = cur_lv > 0  # upgrading existing perk
+
+            if leveling:
+                bg = (50, 45, 15) if selected else (30, 28, 10)
+                border = (255, 200, 30) if selected else (160, 130, 20)
+            else:
+                bg = (30, 60, 40) if selected else (18, 32, 22)
+                border = GREEN if selected else (40, 70, 45)
             pygame.draw.rect(surface, bg, rect, border_radius=8)
             pygame.draw.rect(surface, border, rect, 2, border_radius=8)
 
-            name_s = self._big.render(perk["name"], True, WHITE if selected else (180, 200, 180))
+            if leveling:
+                label = f"{perk['name']}  Lv {cur_lv} → {cur_lv + 1}"
+            else:
+                label = f"{perk['name']}  (NEW)"
+            name_s = self._big.render(label, True, WHITE if selected else (180, 200, 180))
             surface.blit(name_s, (rect.centerx - name_s.get_width() // 2, rect.y + 14))
 
-            # Word-wrap desc across 2 lines max
+            # Word-wrap desc
             words = perk["desc"].split()
             lines, line = [], []
             for w in words:
