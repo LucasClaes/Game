@@ -1,7 +1,10 @@
+import os
 import pygame
 from core.settings import SCREEN_W, SCREEN_H, FPS
 from core.state_machine import StateManager, GameState
 from core.save import load_save, write_save
+
+_RELOAD_FLAG = os.path.join(os.path.dirname(__file__), "..", "data", ".dev_reload")
 
 
 class Game:
@@ -66,6 +69,14 @@ class Game:
                 audio.update(dt)
             except Exception:
                 pass
+
+            if os.path.exists(_RELOAD_FLAG):
+                try:
+                    os.remove(_RELOAD_FLAG)
+                    new_data = load_save()
+                    self.state_manager.dev_reload(new_data)
+                except Exception:
+                    pass
 
             self.state_manager.update(events, dt)
             self.state_manager.draw(self.screen)

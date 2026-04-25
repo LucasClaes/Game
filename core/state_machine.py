@@ -35,3 +35,9 @@ class StateManager:
     def draw(self, surface):
         if self._current:
             self._current.draw(surface)
+
+    def dev_reload(self, player_data: dict):
+        if self._current and hasattr(self._current, '_player_data'):
+            self._current._player_data = player_data
+        if self._current and hasattr(self._current, '_dev_reload'):
+            self._current._dev_reload(player_data)

@@ -36,6 +36,8 @@ class Player:
         )
         self.rect = pygame.Rect(0, 0, self.SIZE, self.SIZE)
         self.rect.center = (int(self.pos.x), int(self.pos.y))
+        self._float_x = float(self.rect.x)
+        self._float_y = float(self.rect.y)
 
         spd   = upgrades.get("speed", 0)
         dmg   = upgrades.get("damage", 0)
@@ -213,11 +215,19 @@ class Player:
 
         from systems.collision import resolve_wall_collision
         if self._dash_timer > 0:
-            resolve_wall_collision(self.rect, walls,
-                                   self._dash_dir.x * self.dash_speed * dt,
-                                   self._dash_dir.y * self.dash_speed * dt)
+            self._float_x, self._float_y = resolve_wall_collision(
+                self.rect, walls,
+                self._dash_dir.x * self.dash_speed * dt,
+                self._dash_dir.y * self.dash_speed * dt,
+                self._float_x, self._float_y,
+            )
         else:
-            resolve_wall_collision(self.rect, walls, dx * self.speed * dt, dy * self.speed * dt)
+            self._float_x, self._float_y = resolve_wall_collision(
+                self.rect, walls,
+                dx * self.speed * dt,
+                dy * self.speed * dt,
+                self._float_x, self._float_y,
+            )
         self.pos.x = self.rect.centerx
         self.pos.y = self.rect.centery
 
@@ -249,6 +259,8 @@ class Player:
             tile_y * TILE_SIZE + TILE_SIZE // 2,
         )
         self.rect.center = (int(self.pos.x), int(self.pos.y))
+        self._float_x = float(self.rect.x)
+        self._float_y = float(self.rect.y)
         self.hp = self.max_hp
         self.invincible_timer = self.INVINCIBLE_DURATION
 

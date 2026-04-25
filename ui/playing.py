@@ -532,6 +532,21 @@ class PlayingScreen:
         self._sfx("coin")
         self._particles.emit(crate.rect.centerx, crate.rect.centery, 14, (255, 200, 50))
 
+    def _dev_reload(self, player_data: dict):
+        self._player_data = player_data
+        if self._player is None:
+            return
+        from entities.player import Player
+        from core.settings import TILE_SIZE
+        tx = int(self._player.pos.x // TILE_SIZE)
+        ty = int(self._player.pos.y // TILE_SIZE)
+        self._player = Player(tx, ty, player_data.get("upgrades", {}),
+                              player_data=player_data)
+        self._flash_timer = 0.4
+        self._flash_color = (50, 200, 255)
+        self._pickup_text = "DEV: Reloaded!"
+        self._pickup_timer = 2.0
+
     def _toggle_pause(self):
         self._paused = not self._paused
         try:
