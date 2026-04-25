@@ -8,7 +8,8 @@ class HUD:
         self._big = big_font
 
     def draw(self, surface: pygame.Surface, player, level, total_coins: int,
-             player_data: dict = None, boss=None, combo: int = 0):
+             player_data: dict = None, boss=None, combo: int = 0,
+             kill_count: int = 0, elapsed: float = 0.0):
         self._draw_hp(surface, player)
         self._draw_lives(surface, player)
         self._draw_coins(surface, level)
@@ -20,6 +21,9 @@ class HUD:
             self._draw_boss_bar(surface, boss)
         if combo >= 3:
             self._draw_combo(surface, combo)
+        self._draw_stats(surface, kill_count, elapsed)
+        if player_data and player_data.get("run_perks"):
+            self._draw_perks(surface, player_data["run_perks"])
 
     def _draw_hp(self, surface, player):
         bar_w = 140
@@ -81,6 +85,27 @@ class HUD:
         text = f"x{mult:.1f} COMBO  ({combo} kills)"
         s = self._font.render(text, True, (255, 160, 30))
         surface.blit(s, (SCREEN_W // 2 - s.get_width() // 2, 32))
+
+    def _draw_stats(self, surface, kill_count: int, elapsed: float):
+        mins = int(elapsed) // 60
+        secs = int(elapsed) % 60
+        time_str = f"{mins}:{secs:02d}"
+        kills_str = f"Kills: {kill_count}"
+        kills_surf = self._font.render(kills_str, True, (200, 200, 200))
+        time_surf  = self._font.render(time_str,  True, (180, 180, 220))
+        surface.blit(kills_surf, (SCREEN_W - kills_surf.get_width() - 12, SCREEN_H - 52))
+        surface.blit(time_surf,  (SCREEN_W - time_surf.get_width()  - 12, SCREEN_H - 28))
+
+    def _draw_perks(self, surface, run_perks):
+        x, y = 12, 52
+        for pid in run_perks:
+            label = pid[:3].upper()
+            badge_surf = self._font.render(label, True, (255, 200, 80))
+            bw = badge_surf.get_width() + 8
+            pygame.draw.rect(surface, (60, 50, 20), (x, y, bw, 18), border_radius=3)
+            pygame.draw.rect(surface, (180, 140, 40), (x, y, bw, 18), 1, border_radius=3)
+            surface.blit(badge_surf, (x + 4, y + 1))
+            x += bw + 4
 
     def _draw_boss_bar(self, surface, boss):
         bar_w = 400

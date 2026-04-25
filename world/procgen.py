@@ -239,9 +239,18 @@ def _build_walls(walkable, tile_w, tile_h):
 
 def _make_zombies(positions, idx):
     t = min(idx / 10.0, 1.0)
-    ranged_w = min(t * 0.3, 0.25) if idx >= 3 else 0.0
-    weights = [max(0.15, 1.0 - t * 0.8 - ranged_w), t * 0.35, t * 0.35, ranged_w]
-    types = ["basic", "fast", "tank", "ranged"]
+
+    basic_w    = max(0.10, 1.0 - t * 0.85)
+    fast_w     = t * 0.30
+    tank_w     = t * 0.25
+    ranged_w   = min(t * 0.25, 0.20) if idx >= 3 else 0.0
+    exploder_w = min(t * 0.15, 0.12) if idx >= 1 else 0.0
+    healer_w   = min(t * 0.08, 0.06) if idx >= 2 else 0.0
+    lurker_w   = min(t * 0.12, 0.10) if idx >= 3 else 0.0
+
+    types   = ["basic", "fast", "tank", "ranged", "exploder", "healer", "lurker"]
+    weights = [basic_w, fast_w, tank_w, ranged_w, exploder_w, healer_w, lurker_w]
+
     elite_chance = 0.15 if idx >= 3 else 0.0
     return [
         {
