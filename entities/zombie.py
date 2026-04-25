@@ -179,6 +179,7 @@ class Zombie:
         if self._invincible > 0:
             return False
         self._state = Zombie.CHASE  # always aggro when hit
+        self._hidden = False
         self.hp -= amount
         self._hit_flash = 0.12
         self._invincible = 0.14

@@ -171,8 +171,7 @@ class PlayingScreen:
             self._flash_timer = 0.5
             self._flash_color = (100, 220, 100)
             return False
-        if not died and self._player.invincible_timer < self._player.INVINCIBLE_DURATION:
-            # damage was applied
+        if not died and self._player.invincible_timer >= self._player.INVINCIBLE_DURATION:
             self._on_player_hurt(perks)
         return died
 
@@ -304,6 +303,7 @@ class PlayingScreen:
                 self._award_coins(self._boss.coins)
                 self._level._force_open = True
                 self._sfx("boss_roar")
+                self._camera.shake(0.7, 12)
                 self._flash_timer = 0.6
                 self._flash_color = (255, 120, 0)
                 # Guaranteed crate on boss kill
@@ -391,6 +391,7 @@ class PlayingScreen:
                         self._award_coins(self._boss.coins)
                         self._level._force_open = True
                         self._sfx("boss_roar")
+                        self._camera.shake(0.7, 12)
                         self._flash_timer = 0.6
                         self._flash_color = (255, 120, 0)
                         from entities.crate import LootCrate
@@ -432,6 +433,7 @@ class PlayingScreen:
                         self._award_coins(self._boss.coins)
                         self._level._force_open = True
                         self._sfx("boss_roar")
+                        self._camera.shake(0.7, 12)
                         self._flash_timer = 0.6
                         self._flash_color = (255, 120, 0)
                         from entities.crate import LootCrate
@@ -683,7 +685,8 @@ class PlayingScreen:
             self._sfx("game_over")
             from core.state_machine import GameState
             self._sm.switch_to(GameState.GAME_OVER, player_data=self._player_data,
-                               coins_earned=self._coins_earned_this_run)
+                               coins_earned=self._coins_earned_this_run,
+                               kill_count=self._kill_count, elapsed=self._elapsed)
         else:
             self._player.respawn(self._level.player_start[0], self._level.player_start[1])
 
@@ -692,7 +695,8 @@ class PlayingScreen:
         self._sm.switch_to(GameState.LEVEL_COMPLETE,
                            player_data=self._player_data,
                            coins_earned=self._coins_earned_this_run,
-                           level_num=self._level.number)
+                           level_num=self._level.number,
+                           kill_count=self._kill_count, elapsed=self._elapsed)
 
     def draw(self, surface: pygame.Surface):
         if self._level is None or self._player is None:
@@ -746,7 +750,8 @@ class PlayingScreen:
         self._hud.draw(surface, self._player, self._level, len(self._level.coins),
                        player_data=self._player_data, boss=self._boss, combo=self._combo,
                        kill_count=self._kill_count, elapsed=self._elapsed)
-        self._minimap.draw(surface, self._level, self._player, self._level.zombies)
+        self._minimap.draw(surface, self._level, self._player, self._level.zombies,
+                           crates=self._crates, barrels=self._barrels)
 
         # Crate pickup notification
         if self._pickup_timer > 0 and self._pickup_text:
@@ -802,3 +807,10 @@ class PlayingScreen:
 
         hint = self._font.render("ESC to resume", True, (120, 120, 140))
         surface.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, SCREEN_H // 2 + 108))
+
+        mins = int(self._elapsed) // 60
+        secs = int(self._elapsed) % 60
+        stat1 = self._font.render(f"Kills this level: {self._kill_count}", True, (160, 160, 180))
+        stat2 = self._font.render(f"Time: {mins}:{secs:02d}", True, (160, 160, 180))
+        surface.blit(stat1, (SCREEN_W // 2 - stat1.get_width() // 2, SCREEN_H // 2 + 132))
+        surface.blit(stat2, (SCREEN_W // 2 - stat2.get_width() // 2, SCREEN_H // 2 + 154))

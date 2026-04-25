@@ -10,12 +10,14 @@ class Minimap:
     _ZOMBIE_COLOR = (220,  60,  60)
     _PLAYER_COLOR = (255, 255, 255)
     _BORDER_COLOR = (100, 100, 130)
+    _CRATE_COLOR  = (200, 160,  50)
+    _BARREL_COLOR = (130,  80,  40)
 
     def __init__(self):
         self._cached_id = None
         self._bg_surf: pygame.Surface | None = None
 
-    def draw(self, surface: pygame.Surface, level, player, zombies):
+    def draw(self, surface: pygame.Surface, level, player, zombies, crates=None, barrels=None):
         scale_x = MINIMAP_SIZE / level.tile_w
         scale_y = MINIMAP_SIZE / level.tile_h
         ox = SCREEN_W - MINIMAP_SIZE - 12
@@ -40,6 +42,23 @@ class Minimap:
                 cx = int(coin.rect.centerx / TILE_SIZE * scale_x + ox)
                 cy = int(coin.rect.centery / TILE_SIZE * scale_y + oy)
                 pygame.draw.circle(surface, self._COIN_COLOR, (cx, cy), sdot)
+
+        # Crates
+        if crates:
+            for crate in crates:
+                if crate.alive:
+                    crx = int(crate.rect.centerx / TILE_SIZE * scale_x + ox)
+                    cry = int(crate.rect.centery / TILE_SIZE * scale_y + oy)
+                    pygame.draw.rect(surface, self._CRATE_COLOR,
+                                     (crx - sdot, cry - sdot, sdot * 2, sdot * 2))
+
+        # Barrels
+        if barrels:
+            for barrel in barrels:
+                if barrel.alive:
+                    brx = int(barrel.rect.centerx / TILE_SIZE * scale_x + ox)
+                    bry = int(barrel.rect.centery / TILE_SIZE * scale_y + oy)
+                    pygame.draw.circle(surface, self._BARREL_COLOR, (brx, bry), sdot)
 
         # Zombies
         for z in zombies:

@@ -33,11 +33,15 @@ class LevelCompleteScreen:
         self._offered_perks: list = []
         self._perk_sel = 0
         self._perk_rects: list = []
+        self._kill_count = 0
+        self._elapsed = 0.0
 
     def on_enter(self, **kwargs):
         self._player_data = kwargs.get("player_data")
         self._coins_earned = kwargs.get("coins_earned", 0)
         self._level_num = kwargs.get("level_num", 0)
+        self._kill_count = kwargs.get("kill_count", 0)
+        self._elapsed = kwargs.get("elapsed", 0.0)
         self._selected = 0
         self._perk_sel = 0
         self._perk_rects = []
@@ -92,6 +96,11 @@ class LevelCompleteScreen:
         perks = self._player_data.setdefault("run_perks", [])
         if perk["id"] not in perks:
             perks.append(perk["id"])
+        try:
+            from systems.audio import audio
+            audio.play("perk_get")
+        except Exception:
+            pass
         self._perk_phase = False
 
     def _update_buttons(self, events):
@@ -194,6 +203,11 @@ class LevelCompleteScreen:
         surface.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, card_y + card_h + 14))
 
     def _draw_buttons(self, surface: pygame.Surface):
+        mins = int(self._elapsed) // 60
+        secs = int(self._elapsed) % 60
+        kills_s = self._font.render(f"Kills: {self._kill_count}   Time: {mins}:{secs:02d}", True, (160, 200, 160))
+        surface.blit(kills_s, (SCREEN_W // 2 - kills_s.get_width() // 2, 186))
+
         btn_w, btn_h = 240, 52
         start_y = 230
         gap = 66

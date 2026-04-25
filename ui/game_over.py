@@ -14,10 +14,14 @@ class GameOverScreen:
         self._best_level = 0
         self._best_coins = 0
         self._is_new_best = False
+        self._kill_count = 0
+        self._elapsed = 0.0
 
     def on_enter(self, **kwargs):
         self._player_data = kwargs.get("player_data")
         self._coins_earned = kwargs.get("coins_earned", 0)
+        self._kill_count = kwargs.get("kill_count", 0)
+        self._elapsed = kwargs.get("elapsed", 0.0)
 
         try:
             from systems.audio import audio
@@ -86,12 +90,19 @@ class GameOverScreen:
             f"Best: Level {self._best_level}  |  {self._best_coins} coins", True, best_col)
         surface.blit(best_s, (SCREEN_W // 2 - best_s.get_width() // 2, 290))
 
+        mins = int(self._elapsed) // 60
+        secs = int(self._elapsed) % 60
+        kills_s = self._font.render(f"Enemies killed: {self._kill_count}", True, (200, 180, 180))
+        time_s  = self._font.render(f"Time: {mins}:{secs:02d}", True, (180, 180, 220))
+        surface.blit(kills_s, (SCREEN_W // 2 - kills_s.get_width() // 2, 330))
+        surface.blit(time_s,  (SCREEN_W // 2 - time_s.get_width()  // 2, 352))
+
         reset_s = self._font.render("All progress lost. Back to square one.", True, (140, 60, 60))
-        surface.blit(reset_s, (SCREEN_W // 2 - reset_s.get_width() // 2, 330))
+        surface.blit(reset_s, (SCREEN_W // 2 - reset_s.get_width() // 2, 378))
 
         btn_w, btn_h = 260, 52
         bx = SCREEN_W // 2 - btn_w // 2
-        by = 390
+        by = 430
         self._btn_rect = pygame.Rect(bx, by, btn_w, btn_h)
         pygame.draw.rect(surface, DARK_GRAY, self._btn_rect, border_radius=8)
         pygame.draw.rect(surface, WHITE, self._btn_rect, 2, border_radius=8)
