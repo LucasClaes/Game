@@ -60,6 +60,9 @@ class PlayingScreen:
         # Combo
         self._combo = 0
         self._combo_timer = 0.0
+        self._kill_count = 0
+        self._elapsed = 0.0
+        self._damage_numbers = []
         # Perk runtime state
         self._iron_will_active = False
         self._second_wind_used = False
@@ -130,6 +133,9 @@ class PlayingScreen:
         # Combo reset
         self._combo = 0
         self._combo_timer = 0.0
+        self._kill_count = 0
+        self._elapsed = 0.0
+        self._damage_numbers = []
 
         # Perk runtime reset per level
         perks = self._player_data.get("run_perks", [])
@@ -199,8 +205,14 @@ class PlayingScreen:
         if self._paused:
             return
 
+        self._elapsed += dt
         self._flash_timer = max(0.0, self._flash_timer - dt)
         self._pickup_timer = max(0.0, self._pickup_timer - dt)
+
+        for dn in self._damage_numbers:
+            dn["timer"] -= dt
+            dn["y"] -= 35 * dt
+        self._damage_numbers = [dn for dn in self._damage_numbers if dn["timer"] > 0]
 
         if self._complete_delay > 0:
             self._complete_delay -= dt
@@ -242,6 +254,8 @@ class PlayingScreen:
 
         # Overclock: detect dash start
         dashing_now = self._player.is_dashing
+        if dashing_now and not self._prev_dashing:
+            self._sfx("dash")
         if dashing_now and not self._prev_dashing and "overclock" in perks and not self._overclock_active:
             self._overclock_active = True
             self._overclock_timer = 6.0
@@ -273,7 +287,8 @@ class PlayingScreen:
         # Update zombies
         for zombie in self._level.zombies:
             new_eb = zombie.update(dt, self._player.pos, self._level.walls,
-                                   self._level.tile_grid, self._level.tile_w, self._level.tile_h)
+                                   self._level.tile_grid, self._level.tile_w, self._level.tile_h,
+                                   zombies=self._level.zombies)
             self._enemy_bullets.extend(new_eb)
 
         # Update boss
@@ -311,6 +326,7 @@ class PlayingScreen:
                     return
                 else:
                     self._sfx("player_hurt")
+                    self._camera.shake(0.2, 5)
                     self._flash_timer = 0.25
                     self._flash_color = (200, 0, 0)
 
@@ -356,8 +372,10 @@ class PlayingScreen:
                     else:
                         bullet.pierce -= 1
                     killed = zombie.take_damage(bullet.damage)
+                    self._spawn_damage_number(zombie.pos, bullet.damage)
                     if killed:
-                        self._on_zombie_killed(zombie)
+                        if self._on_zombie_killed(zombie):
+                            return
                     else:
                         self._chain_aggro(zombie)
 
@@ -400,9 +418,11 @@ class PlayingScreen:
                 if hb.colliderect(zombie.rect):
                     self._player._hit_this_swing.add(id(zombie))
                     killed = zombie.take_damage(self._player.melee_damage)
+                    self._spawn_damage_number(zombie.pos, self._player.melee_damage)
                     self._chain_aggro(zombie)
                     if killed:
-                        self._on_zombie_killed(zombie)
+                        if self._on_zombie_killed(zombie):
+                            return
             # Melee vs boss
             if self._boss and self._boss.alive and id(self._boss) not in self._player._hit_this_swing:
                 if hb.colliderect(self._boss.rect):
@@ -442,6 +462,7 @@ class PlayingScreen:
                         self._on_player_died()
                         return
                     self._sfx("player_hurt")
+                    self._camera.shake(0.15, 4)
                     self._flash_timer = 0.25
                     self._flash_color = (200, 80, 0)
             else:
@@ -456,6 +477,7 @@ class PlayingScreen:
                     return
                 else:
                     self._sfx("player_hurt")
+                    self._camera.shake(0.2, 5)
                     self._flash_timer = 0.25
                     self._flash_color = (200, 0, 0)
 
@@ -468,6 +490,7 @@ class PlayingScreen:
                     return
                 else:
                     self._sfx("player_hurt")
+                    self._camera.shake(0.3, 7)
                     self._flash_timer = 0.35
                     self._flash_color = (200, 0, 0)
 
@@ -476,13 +499,27 @@ class PlayingScreen:
             self._complete_delay = 0.8
             self._sfx("level_up")
 
-        self._camera.update(self._player.pos, self._level.pixel_w, self._level.pixel_h)
+        self._camera.update(self._player.pos, self._level.pixel_w, self._level.pixel_h, dt)
 
-    def _on_zombie_killed(self, zombie):
+    def _spawn_damage_number(self, pos, amount, color=(255, 80, 80)):
+        self._damage_numbers.append({
+            "x": float(pos.x), "y": float(pos.y),
+            "amount": amount, "timer": 1.2, "color": color,
+        })
+
+    def _on_zombie_killed(self, zombie) -> bool:
         perks = self._perks()
         self._award_coins(zombie.coin_drop)
         self._sfx("enemy_die")
-        self._particles.emit(zombie.pos.x, zombie.pos.y, 8, (200, 60, 60))
+        self._kill_count += 1
+
+        _type_colors = {
+            "fast": (255, 140, 30), "tank": (160, 60, 220),
+            "ranged": (180, 80, 200), "exploder": (60, 220, 80),
+            "healer": (200, 100, 220), "lurker": (0, 180, 180),
+        }
+        pcolor = _type_colors.get(zombie.zombie_type, (200, 60, 60))
+        self._particles.emit(zombie.pos.x, zombie.pos.y, 12, pcolor)
 
         # Combo
         self._combo += 1
@@ -495,7 +532,7 @@ class PlayingScreen:
                 self._vampiric_kills = 0
                 self._player.hp = min(self._player.hp + 1, self._player.max_hp)
 
-        # Explosive death
+        # Explosive death perk
         if "explosive_death" in perks:
             for other in self._level.zombies:
                 if other is not zombie and other.alive:
@@ -506,6 +543,23 @@ class PlayingScreen:
         if "bounty_hunter" in perks and zombie.elite:
             from entities.crate import LootCrate
             self._crates.append(LootCrate.from_pixel(zombie.pos.x, zombie.pos.y))
+
+        # Exploder AOE on death
+        if zombie.death_data.get("explode"):
+            exp_pos = zombie.death_data["pos"]
+            exp_r   = zombie.death_data["radius"]
+            exp_dmg = zombie.death_data["damage"]
+            self._particles.emit(int(exp_pos.x), int(exp_pos.y), 20, (255, 200, 50))
+            self._camera.shake(0.4, 8)
+            self._flash_timer = 0.3
+            self._flash_color = (255, 200, 50)
+            if math.hypot(self._player.pos.x - exp_pos.x, self._player.pos.y - exp_pos.y) < exp_r:
+                died = self._take_player_damage(exp_dmg)
+                if died:
+                    self._on_player_died()
+                    return True
+
+        return False
 
     def _open_crate(self, crate):
         crate.alive = False
@@ -529,7 +583,7 @@ class PlayingScreen:
 
         self._pickup_text = f"Found: {piece['name']}!"
         self._pickup_timer = 3.0
-        self._sfx("coin")
+        self._sfx("crate_open")
         self._particles.emit(crate.rect.centerx, crate.rect.centery, 14, (255, 200, 50))
 
     def _dev_reload(self, player_data: dict):
@@ -596,6 +650,8 @@ class PlayingScreen:
                     self._level._force_open = True
                     self._sfx("boss_roar")
         self._level.zombies = [z for z in self._level.zombies if z.alive]
+        self._sfx("bomb_explode")
+        self._camera.shake(0.5, 10)
         self._flash_timer = 0.4
         self._flash_color = (255, 200, 50)
         from core.save import write_save
@@ -606,6 +662,7 @@ class PlayingScreen:
             self._player_data["shields"] = self._player.shields
             from core.save import write_save
             write_save(self._player_data)
+            self._sfx("shield_activate")
 
     def _award_coins(self, amount: int):
         perks = self._perks()
@@ -679,8 +736,16 @@ class PlayingScreen:
 
         self._player.draw(surface, self._camera.offset)
 
+        for dn in self._damage_numbers:
+            alpha = int(min(255, dn["timer"] * 255))
+            s = self._font.render(str(dn["amount"]), True, dn["color"])
+            s.set_alpha(alpha)
+            surface.blit(s, (int(dn["x"] - self._camera.offset.x) - s.get_width() // 2,
+                             int(dn["y"] - self._camera.offset.y)))
+
         self._hud.draw(surface, self._player, self._level, len(self._level.coins),
-                       player_data=self._player_data, boss=self._boss, combo=self._combo)
+                       player_data=self._player_data, boss=self._boss, combo=self._combo,
+                       kill_count=self._kill_count, elapsed=self._elapsed)
         self._minimap.draw(surface, self._level, self._player, self._level.zombies)
 
         # Crate pickup notification
