@@ -11,7 +11,7 @@ a = Analysis(
         ('data/gear.json',     'data'),
         ('data/perks.json',    'data'),
     ],
-    hiddenimports=[],
+    hiddenimports=['tkinter', 'tkinter.messagebox', 'tkinter.ttk'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

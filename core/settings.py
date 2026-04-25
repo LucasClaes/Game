@@ -1,3 +1,5 @@
+VERSION = "v1.0.0"
+
 SCREEN_W = 960
 SCREEN_H = 640
 FPS = 60

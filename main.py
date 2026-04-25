@@ -4,6 +4,9 @@ import pygame
 
 
 def main():
+    from core.settings import VERSION
+    from core.updater import check_and_update
+    check_and_update(VERSION)
     try:
         from core.game import Game
         game = Game()
