@@ -4,13 +4,14 @@ import os
 import pygame
 
 _RATE = 44100
+_BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 MUSIC_TRACKS = {
-    "menu":          "assets/music/menu.mp3",
-    "combat":        "assets/music/combat.mp3",
-    "shop":          "assets/music/shop.mp3",
-    "levelcomplete": "assets/music/levelcomplete.mp3",
-    "gameover":      "assets/music/gameover.mp3",
+    "menu":          os.path.join(_BASE, "assets", "music", "menu.mp3"),
+    "combat":        os.path.join(_BASE, "assets", "music", "combat.mp3"),
+    "shop":          os.path.join(_BASE, "assets", "music", "shop.mp3"),
+    "levelcomplete": os.path.join(_BASE, "assets", "music", "levelcomplete.mp3"),
+    "gameover":      os.path.join(_BASE, "assets", "music", "gameover.mp3"),
 }
 
 

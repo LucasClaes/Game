@@ -51,6 +51,19 @@ class SettingsScreen:
                     self._set_val(self._selected, self._get_val(self._selected) + 10)
                 elif event.key == pygame.K_ESCAPE:
                     self._back()
+            if event.type == pygame.MOUSEMOTION:
+                for i in range(len(self._items)):
+                    row_y = 220 + i * 110
+                    if row_y <= event.pos[1] <= row_y + 80:
+                        self._selected = i
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                bx = SCREEN_W // 2 - 160
+                for i in range(len(self._items)):
+                    by = 220 + i * 110 + 38
+                    if bx <= event.pos[0] <= bx + 320 and by - 10 <= event.pos[1] <= by + 28:
+                        raw = int((event.pos[0] - bx) / 320 * 100)
+                        rounded = max(0, min(100, round(raw / 10) * 10))
+                        self._set_val(i, rounded)
 
     def _back(self):
         from core.state_machine import GameState

@@ -161,6 +161,8 @@ class PlayingScreen:
         perks = self._perks()
         if "iron_will" in perks and self._iron_will_active:
             self._iron_will_active = False
+            self._flash_timer = 0.4
+            self._flash_color = (180, 255, 180)
             return False
         died = self._player.take_damage(amount)
         if died and "second_wind" in perks and not self._second_wind_used:
@@ -180,6 +182,8 @@ class PlayingScreen:
             self._adrenaline_active = True
             self._adrenaline_timer = 8.0
             self._player.speed *= 1.15
+            self._flash_timer = 0.3
+            self._flash_color = (255, 140, 0)
         self._combo = 0
         self._combo_timer = 0.0
 
@@ -260,6 +264,8 @@ class PlayingScreen:
             self._overclock_timer = 6.0
             self._player.swing_cooldown *= 0.70
             self._player.shoot_cooldown *= 0.70
+            self._flash_timer = 0.3
+            self._flash_color = (80, 200, 255)
         self._prev_dashing = dashing_now
 
         self._player.update(dt, keys, self._level.walls)
@@ -533,9 +539,13 @@ class PlayingScreen:
             if self._vampiric_kills >= 10:
                 self._vampiric_kills = 0
                 self._player.hp = min(self._player.hp + 1, self._player.max_hp)
+                self._particles.emit(int(self._player.pos.x), int(self._player.pos.y), 10, (60, 220, 80))
+                self._flash_timer = 0.3
+                self._flash_color = (60, 220, 80)
 
         # Explosive death perk
         if "explosive_death" in perks:
+            self._sfx("bomb_explode")
             for other in self._level.zombies:
                 if other is not zombie and other.alive:
                     if (other.pos - zombie.pos).length() <= 80:
@@ -587,6 +597,8 @@ class PlayingScreen:
         self._pickup_timer = 3.0
         self._sfx("crate_open")
         self._particles.emit(crate.rect.centerx, crate.rect.centery, 14, (255, 200, 50))
+        self._flash_timer = 0.35
+        self._flash_color = (160, 100, 255)
 
     def _dev_reload(self, player_data: dict):
         self._player_data = player_data
