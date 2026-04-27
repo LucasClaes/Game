@@ -92,6 +92,17 @@ class PlayingScreen:
         # Extra runtime
         self._acid_traps: list = []  # [{rect, timer, dmg_timer}]
         self._hp_drain_timer = 0.0
+        # Class passives
+        self._class_kill_streak  = 0
+        self._class_crit_ready   = False
+        self._class_recent_kills: list = []
+        self._class_speed_boost  = 0.0
+        # Environmental hazards
+        self._hazard_timers: dict = {}
+        self._hazard_electric_timers: dict = {}
+        self._gas_in_zone = False
+        # Special rooms
+        self._triggered_specials: set = set()
         # Challenge / difficulty
         self._challenge_modifier: str | None = None
         self._challenge_id: str | None = None
@@ -188,6 +199,20 @@ class PlayingScreen:
         self._prev_dashing = False
         self._acid_traps = []
         self._hp_drain_timer = getattr(self._player, "hp_drain_interval", 0.0)
+        # Class passive reset
+        self._class_kill_streak  = 0
+        self._class_crit_ready   = False
+        self._class_recent_kills = []
+        self._class_speed_boost  = 0.0
+        # Hazard / special room reset
+        self._hazard_timers = {}
+        self._hazard_electric_timers = {}
+        self._gas_in_zone = False
+        self._triggered_specials = set()
+        # Paladin free shield at run start
+        if self._player.player_class == "paladin" and level_index == 0:
+            self._player_data["shields"] = self._player_data.get("shields", 0) + 1
+            self._player.shields = self._player_data["shields"]
 
         # Apply difficulty multipliers
         from core.settings import DIFFICULTIES
@@ -266,6 +291,9 @@ class PlayingScreen:
             self._flash_timer = 0.4
             self._flash_color = (180, 255, 180)
             return False
+        if (self._player.player_class == "paladin" and
+                self._player.hp / max(1, self._player.max_hp) < 0.25):
+            amount = max(1, int(amount * 0.70))
         died = self._player.take_damage(amount)
         if died and self._second_wind_remaining > 0:
             self._second_wind_remaining -= 1
@@ -355,6 +383,12 @@ class PlayingScreen:
                 self._player.swing_cooldown /= 0.70
                 self._player.shoot_cooldown /= 0.70
 
+        if self._class_speed_boost > 0:
+            self._class_speed_boost -= dt
+            if self._class_speed_boost <= 0:
+                self._class_speed_boost = 0.0
+                self._player.speed /= 1.4
+
         # Crown of Thorns HP drain
         drain = getattr(self._player, "hp_drain_interval", 0.0)
         if drain > 0:
@@ -393,6 +427,8 @@ class PlayingScreen:
             self._player.shoot_cooldown *= 0.70
             self._flash_timer = 0.3
             self._flash_color = (80, 200, 255)
+        if self._prev_dashing and not dashing_now and self._player.player_class == "rogue":
+            self._class_crit_ready = True
         self._prev_dashing = dashing_now
 
         self._player.update(dt, keys, self._level.walls)
@@ -620,10 +656,15 @@ class PlayingScreen:
                 if hb.colliderect(zombie.rect):
                     self._player._hit_this_swing.add(id(zombie))
                     dmg = self._player.melee_damage
-                    if self._player.execute_bonus > 0 and zombie.hp < zombie.max_hp * 0.25:
-                        dmg = int(dmg * (1 + self._player.execute_bonus))
+                    if self._class_crit_ready:
+                        dmg *= 2
+                        self._class_crit_ready = False
+                        self._spawn_damage_number(zombie.pos, dmg, color=(255, 220, 0))
+                    else:
+                        if self._player.execute_bonus > 0 and zombie.hp < zombie.max_hp * 0.25:
+                            dmg = int(dmg * (1 + self._player.execute_bonus))
+                        self._spawn_damage_number(zombie.pos, dmg)
                     killed = zombie.take_damage(dmg)
-                    self._spawn_damage_number(zombie.pos, dmg)
                     self._chain_aggro(zombie)
                     if killed:
                         if self._on_zombie_killed(zombie):
@@ -632,7 +673,11 @@ class PlayingScreen:
             if self._boss and self._boss.alive and id(self._boss) not in self._player._hit_this_swing:
                 if hb.colliderect(self._boss.rect):
                     self._player._hit_this_swing.add(id(self._boss))
-                    killed = self._boss.take_damage(self._player.melee_damage)
+                    boss_dmg = self._player.melee_damage
+                    if self._class_crit_ready:
+                        boss_dmg *= 2
+                        self._class_crit_ready = False
+                    killed = self._boss.take_damage(boss_dmg)
                     if killed:
                         self._award_coins(self._boss.coins)
                         self._level._force_open = True
@@ -675,6 +720,55 @@ class PlayingScreen:
                     self._flash_color = (200, 80, 0)
             else:
                 self._trap_timer = 0.0
+
+        # Environmental hazard zones
+        in_gas_now = False
+        for hz in self._level.hazard_zones:
+            hz_id = id(hz)
+            if not self._player.rect.colliderect(hz["rect"]):
+                continue
+            hz_type = hz["type"]
+            if hz_type == "lava":
+                self._hazard_timers[hz_id] = self._hazard_timers.get(hz_id, 0.0) + dt
+                if self._hazard_timers[hz_id] >= 1.0:
+                    self._hazard_timers[hz_id] -= 1.0
+                    died = self._take_player_damage(8)
+                    if died:
+                        self._on_player_died()
+                        return
+            elif hz_type == "electric":
+                self._hazard_electric_timers[hz_id] = self._hazard_electric_timers.get(hz_id, 0.0) + dt
+                if self._hazard_electric_timers[hz_id] >= 1.5:
+                    self._hazard_electric_timers[hz_id] = 0.0
+                    died = self._take_player_damage(20)
+                    if died:
+                        self._on_player_died()
+                        return
+                    self._flash_timer = max(self._flash_timer, 0.25)
+                    self._flash_color = (100, 150, 255)
+            elif hz_type == "gas":
+                in_gas_now = True
+                self._hazard_timers[hz_id] = self._hazard_timers.get(hz_id, 0.0) + dt
+                if self._hazard_timers[hz_id] >= 1.0:
+                    self._hazard_timers[hz_id] -= 1.0
+                    died = self._take_player_damage(5)
+                    if died:
+                        self._on_player_died()
+                        return
+        if in_gas_now and not self._gas_in_zone:
+            self._player.speed *= 0.5
+            self._gas_in_zone = True
+        elif not in_gas_now and self._gas_in_zone:
+            self._player.speed /= 0.5
+            self._gas_in_zone = False
+
+        # Special room triggers
+        for sr in self._level.special_rooms:
+            if id(sr) in self._triggered_specials:
+                continue
+            if self._player.rect.colliderect(sr["rect"]):
+                self._triggered_specials.add(id(sr))
+                self._trigger_special_room(sr["type"], sr["rect"])
 
         # Zombie contact damage
         for zombie in self._level.zombies:
@@ -741,6 +835,24 @@ class PlayingScreen:
         self._kill_count += 1
         self._player_data["total_kills"] = self._player_data.get("total_kills", 0) + 1
         self._run_achievements()
+
+        # Class passives on kill
+        cls = self._player.player_class
+        if cls == "warrior":
+            self._class_kill_streak += 1
+            if self._class_kill_streak >= 5:
+                self._class_kill_streak = 0
+                self._class_crit_ready = True
+        elif cls == "mage":
+            import time as _time
+            _now = _time.time()
+            self._class_recent_kills.append(_now)
+            self._class_recent_kills = [t for t in self._class_recent_kills if _now - t <= 3.0]
+            if len(self._class_recent_kills) >= 3 and self._class_speed_boost <= 0:
+                self._class_speed_boost = 3.0
+                self._player.speed *= 1.4
+                self._flash_timer = max(self._flash_timer, 0.3)
+                self._flash_color = (100, 200, 255)
 
         _type_colors = {
             "fast": (255, 140, 30), "tank": (160, 60, 220),
@@ -865,6 +977,48 @@ class PlayingScreen:
         self._sfx("crate_open")
         self._particles.emit(crate.rect.centerx, crate.rect.centery, 14, (255, 200, 50))
         self._flash_timer = 0.35
+        self._flash_color = (160, 100, 255)
+
+    def _trigger_special_room(self, sr_type: str, rect: pygame.Rect):
+        if sr_type == "armory":
+            from entities.crate import LootCrate
+            cx = rect.centerx // 32
+            cy = rect.centery // 32
+            self._crates.append(LootCrate(cx - 1, cy))
+            self._crates.append(LootCrate(cx + 1, cy))
+            self._pickup_text = "Armory! Two crates spawned"
+            self._pickup_timer = 2.5
+        elif sr_type == "rest":
+            self._player.hp = min(self._player.hp + 1, self._player.max_hp)
+            self._pickup_text = "Rest Stop: +1 HP"
+            self._pickup_timer = 2.5
+            self._flash_timer = max(self._flash_timer, 0.4)
+            self._flash_color = (60, 220, 80)
+        elif sr_type == "shrine":
+            self._grant_shrine_perk()
+
+    def _grant_shrine_perk(self):
+        import json as _json
+        try:
+            with open(_PERKS_PATH) as f:
+                all_perks = _json.load(f)["perks"]
+        except Exception:
+            return
+        owned = self._player_data.get("run_perks", {})
+        if isinstance(owned, list):
+            owned = {pid: 1 for pid in owned}
+        available = [p for p in all_perks if owned.get(p["id"], 0) < 3]
+        if not available:
+            self._pickup_text = "Shrine: Nothing to grant"
+            self._pickup_timer = 2.0
+            return
+        perk = random.choice(available)
+        pid = perk["id"]
+        owned[pid] = min(owned.get(pid, 0) + 1, 3)
+        self._player_data["run_perks"] = owned
+        self._pickup_text = f"Shrine: {perk['name']} granted!"
+        self._pickup_timer = 3.0
+        self._flash_timer = max(self._flash_timer, 0.4)
         self._flash_color = (160, 100, 255)
 
     def _dev_reload(self, player_data: dict):
