@@ -31,6 +31,8 @@ _DEFAULT = {
     "inventory": [],
     "best_level_by_diff": {},
     "difficulty": 1,
+    "unlocks": [],
+    "run_class": "warrior",
 }
 
 
@@ -56,6 +58,7 @@ def _merge(data: dict) -> dict:
         seed = list(set(data.get("found_gear", []) + list(data.get("gear", {}).values())))
         merged["inventory"] = [x for x in seed if x]
     merged["best_level_by_diff"] = dict(data.get("best_level_by_diff", {}))
+    merged["unlocks"] = list(data.get("unlocks", []))
     return merged
 
 

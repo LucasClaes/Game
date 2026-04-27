@@ -10,6 +10,8 @@ class GameState(Enum):
     SETTINGS = auto()
     ACHIEVEMENTS = auto()
     CODEX = auto()
+    CLASS_SELECT  = "class_select"
+    UNLOCK_TREE   = "unlock_tree"
 
 
 class StateManager:
