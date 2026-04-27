@@ -88,18 +88,21 @@ class Player:
         self.execute_bonus = 0.0
         self.first_hit_immune_charges = 0
         self.hp_drain_interval = 0.0
-        self.melee_range_mult  = 1.0
-        self.melee_hitbox_mult = 1.0
-        self.bullet_count      = 1
-        self.bullet_spread     = 0
-        self.player_class      = "warrior"
+        self.melee_range_mult      = 1.0
+        self.melee_hitbox_mult     = 1.0
+        self.bullet_count          = 1
+        self.bullet_spread         = 0
+        self.player_class          = "warrior"
+        self._equipped_weapon_name = "FISTS"
 
         # Apply gear bonuses
         gear_defs = _load_gear_defs()
-        for gid in pd.get("gear", {}).values():
+        for slot, gid in pd.get("gear", {}).items():
             piece = gear_defs.get(gid)
             if not piece:
                 continue
+            if slot == "weapon":
+                self._equipped_weapon_name = piece.get("name", "FISTS")
             stat, val = piece["stat"], piece["value"]
             if stat == "bonus_hp":
                 self.max_hp += int(val)

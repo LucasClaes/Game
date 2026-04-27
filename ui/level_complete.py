@@ -71,7 +71,8 @@ class LevelCompleteScreen:
             lv = owned.get(p["id"], 0)
             if lv >= 3:
                 continue  # maxed
-            if lv == 0 and distinct_count >= _MAX_PERKS:
+            max_perks = 5 if "slot_5th_perk" in (self._player_data or {}).get("unlocks", []) else _MAX_PERKS
+            if lv == 0 and distinct_count >= max_perks:
                 continue  # can't add new distinct perk
             available.append(p)
 

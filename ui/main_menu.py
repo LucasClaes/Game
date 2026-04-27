@@ -43,7 +43,7 @@ class MainMenuScreen:
         self._font        = font
         self._big         = big_font
         self._title       = title_font
-        self._buttons     = ["PLAY", "CHALLENGE", "SHOP", "CODEX", "ACHIEVEMENTS", "SETTINGS", "QUIT"]
+        self._buttons     = ["PLAY", "CHALLENGE", "SHOP", "CODEX", "ACHIEVEMENTS", "UNLOCK TREE", "SETTINGS", "QUIT"]
         self._selected    = 0
         self._player_data = None
         self._anim        = 0.0
@@ -139,7 +139,7 @@ class MainMenuScreen:
         from core.state_machine import GameState
         label = self._buttons[index]
         if label == "PLAY":
-            self._sm.switch_to(GameState.PLAYING, player_data=self._player_data)
+            self._sm.switch_to(GameState.CLASS_SELECT, player_data=self._player_data)
         elif label == "CHALLENGE":
             self._challenge_overlay = True
         elif label == "SHOP":
@@ -148,6 +148,8 @@ class MainMenuScreen:
             self._sm.switch_to(GameState.CODEX, player_data=self._player_data)
         elif label == "ACHIEVEMENTS":
             self._sm.switch_to(GameState.ACHIEVEMENTS, player_data=self._player_data)
+        elif label == "UNLOCK TREE":
+            self._sm.switch_to(GameState.UNLOCK_TREE, player_data=self._player_data)
         elif label == "SETTINGS":
             self._sm.switch_to(GameState.SETTINGS, player_data=self._player_data, from_state="MAIN_MENU")
         elif label == "QUIT":

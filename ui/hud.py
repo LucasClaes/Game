@@ -60,7 +60,8 @@ class HUD:
         surface.blit(name_surf, (SCREEN_W // 2 - name_surf.get_width() // 2, 10))
 
     def _draw_weapon(self, surface, player):
-        label = "MELEE  [LMB / Space]"
+        weapon_name = getattr(player, "_equipped_weapon_name", "FISTS")
+        label = f"{weapon_name}  [LMB / Space]"
         color = YELLOW
         if player.has_ranged:
             label += "   |   RANGED  [RMB]"

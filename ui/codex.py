@@ -6,8 +6,8 @@ from core.settings import SCREEN_W, SCREEN_H, WHITE, YELLOW, DARK_GRAY, BLUE, GR
 _PERKS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "perks.json")
 _GEAR_PATH  = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "gear.json")
 
-_SLOT_ORDER = ["helm", "chest", "boots", "gloves"]
-_SLOT_LABELS = {"helm": "HELM", "chest": "CHEST", "boots": "BOOTS", "gloves": "GLOVES"}
+_SLOT_ORDER = ["helm", "chest", "boots", "gloves", "weapon"]
+_SLOT_LABELS = {"helm": "HELM", "chest": "CHEST", "boots": "BOOTS", "gloves": "GLOVES", "weapon": "WEAPON"}
 
 
 def _load_perks() -> list:

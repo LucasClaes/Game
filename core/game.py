@@ -44,6 +44,8 @@ class Game:
         from ui.settings import SettingsScreen
         from ui.achievements import AchievementsScreen
         from ui.codex import CodexScreen
+        from ui.class_select import ClassSelectScreen
+        from ui.unlock_tree import UnlockTreeScreen
 
         args = (self.state_manager, font, big_font, title_font)
         self.state_manager.register(GameState.MAIN_MENU,      MainMenuScreen(*args))
@@ -54,6 +56,8 @@ class Game:
         self.state_manager.register(GameState.SETTINGS,       SettingsScreen(*args))
         self.state_manager.register(GameState.ACHIEVEMENTS,   AchievementsScreen(*args))
         self.state_manager.register(GameState.CODEX,          CodexScreen(*args))
+        self.state_manager.register(GameState.CLASS_SELECT,   ClassSelectScreen(*args))
+        self.state_manager.register(GameState.UNLOCK_TREE,    UnlockTreeScreen(*args))
 
         self.state_manager.switch_to(GameState.MAIN_MENU, player_data=player_data)
 
