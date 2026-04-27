@@ -1,0 +1,40 @@
+{
+  "classes": [
+    {
+      "id": "warrior",
+      "name": "Warrior",
+      "desc": "Balanced. Kill streak crits.",
+      "starting": {"bonus_hp": 2, "bonus_armor": 0.10},
+      "passive": "kill_streak_crit",
+      "passive_desc": "Every 5 kills: next melee crits (2x dmg)",
+      "requires_unlock": null
+    },
+    {
+      "id": "rogue",
+      "name": "Rogue",
+      "desc": "Fast. Post-dash crit.",
+      "starting": {"bonus_speed": 0.20, "free_dash": true},
+      "passive": "post_dash_crit",
+      "passive_desc": "After dashing: next melee does 2x dmg",
+      "requires_unlock": "class_rogue"
+    },
+    {
+      "id": "mage",
+      "name": "Mage",
+      "desc": "Ranged specialist. Piercing shots.",
+      "starting": {"free_ranged": true, "bullet_pierce": 1},
+      "passive": "kill_speed_burst",
+      "passive_desc": "3 kills in 3s: +40% speed for 3s",
+      "requires_unlock": "class_mage"
+    },
+    {
+      "id": "paladin",
+      "name": "Paladin",
+      "desc": "Tank. Bonus resistance at low HP.",
+      "starting": {"bonus_hp": 1, "free_shield": true},
+      "passive": "low_hp_resistance",
+      "passive_desc": "Below 25% HP: +30% damage reduction",
+      "requires_unlock": "class_paladin"
+    }
+  ]
+}

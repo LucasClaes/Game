@@ -1,5 +1,5 @@
 {
-  "slots": ["helm", "chest", "boots", "gloves"],
+  "slots": ["helm", "chest", "boots", "gloves", "weapon"],
   "gear": [
     {"id": "iron_helm",        "slot": "helm",   "name": "Iron Helm",        "desc": "+1 max HP",                          "stat": "bonus_hp",            "value": 1},
     {"id": "crystal_helm",     "slot": "helm",   "name": "Crystal Helm",     "desc": "+20% damage reduction",              "stat": "bonus_armor",         "value": 0.20},
@@ -16,6 +16,12 @@
     {"id": "crown_of_thorns",  "slot": "helm",   "name": "Crown of Thorns",  "desc": "+20% damage, drain 1 HP/30s",        "stat": "bonus_melee_ranged",  "value": 0.20, "min_difficulty": 2, "hp_drain": 30.0},
     {"id": "phantom_chest",    "slot": "chest",  "name": "Phantom Chest",    "desc": "First hit per level blocked",         "stat": "first_hit_immune",    "value": 1,    "min_difficulty": 2},
     {"id": "void_boots",       "slot": "boots",  "name": "Void Boots",       "desc": "+30% speed, +15% dash speed",        "stat": "bonus_speed",         "value": 0.30, "min_difficulty": 2, "bonus_dash_speed": 0.15},
-    {"id": "tyrant_gloves",    "slot": "gloves", "name": "Tyrant Gloves",    "desc": "+50% damage vs low HP enemies",       "stat": "execute_bonus",       "value": 0.50, "min_difficulty": 2}
+    {"id": "tyrant_gloves",    "slot": "gloves", "name": "Tyrant Gloves",    "desc": "+50% damage vs low HP enemies",       "stat": "execute_bonus",       "value": 0.50, "min_difficulty": 2},
+    {"id": "iron_sword",   "slot": "weapon", "name": "Iron Sword",   "desc": "+15% melee damage",                                    "stat": "bonus_melee",  "value": 0.15},
+    {"id": "long_spear",   "slot": "weapon", "name": "Long Spear",   "desc": "+10% melee damage, longer reach, narrower swing",      "stat": "bonus_melee",  "value": 0.10, "melee_range_mult": 1.6, "melee_hitbox_mult": 0.65},
+    {"id": "war_flail",    "slot": "weapon", "name": "War Flail",    "desc": "+35% melee damage, huge sweep, slow recovery",         "stat": "bonus_melee",  "value": 0.35, "melee_hitbox_mult": 1.7, "swing_cooldown_mult": 1.45},
+    {"id": "dual_daggers", "slot": "weapon", "name": "Dual Daggers", "desc": "-10% damage but 2x attack speed",                     "stat": "bonus_melee",  "value": -0.10, "swing_cooldown_mult": 0.50},
+    {"id": "scatter_shot", "slot": "weapon", "name": "Scatter Shot", "desc": "Fires 5 pellets in a spread, -15% ranged damage each", "stat": "bonus_ranged", "value": -0.15, "bullet_count": 5, "bullet_spread": 28},
+    {"id": "sniper_rifle", "slot": "weapon", "name": "Sniper Rifle", "desc": "+65% ranged damage, 3x pierce, very slow fire rate",   "stat": "bonus_ranged", "value": 0.65, "shoot_cooldown_mult": 2.8, "bullet_pierce_bonus": 3, "min_difficulty": 2}
   ]
 }

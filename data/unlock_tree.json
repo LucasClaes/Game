@@ -1,0 +1,10 @@
+{
+  "nodes": [
+    {"id": "slot_5th_perk",    "cost": 400, "type": "feature",   "name": "5th Perk Slot",      "desc": "Carry one extra perk per run",               "requires": []},
+    {"id": "class_rogue",      "cost": 500, "type": "class",     "name": "Rogue Class",         "desc": "Start with dash free. Post-dash melee crits", "requires": []},
+    {"id": "class_mage",       "cost": 600, "type": "class",     "name": "Mage Class",          "desc": "Free ranged. Bullets pierce once by default", "requires": ["class_rogue"]},
+    {"id": "class_paladin",    "cost": 800, "type": "class",     "name": "Paladin Class",       "desc": "+1 life, 1 free shield. Low-HP resistance",   "requires": ["class_mage"]},
+    {"id": "weapon_legendary", "cost": 700, "type": "gear",      "name": "Legendary Weapons",   "desc": "Unlocks legendary weapon tier in crate pool", "requires": ["slot_5th_perk"]},
+    {"id": "challenge_elite",  "cost": 300, "type": "challenge", "name": "Elite Gauntlet",      "desc": "Challenge: all zombies are elite",            "requires": []}
+  ]
+}

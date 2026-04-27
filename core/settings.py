@@ -7,6 +7,19 @@ DIFFICULTIES = [
     {"name": "Nightmare", "hp": 2.00, "speed": 1.50, "damage": 1.75, "coins": 2.50, "crate_chance": 0.06, "spawn_count_mult": 1.35},
 ]
 
+BIOMES = [
+    {"name": "dungeon", "range": (0,  4),  "floor": (30, 32, 44), "wall": (55, 55, 75),  "accent": (80,  80,  110)},
+    {"name": "sewer",   "range": (5,  8),  "floor": (28, 40, 30), "wall": (45, 62, 45),  "accent": (60,  110, 60)},
+    {"name": "lab",     "range": (9,  12), "floor": (35, 35, 52), "wall": (58, 58, 82),  "accent": (70,  140, 210)},
+    {"name": "rooftop", "range": (13, 99), "floor": (48, 42, 32), "wall": (72, 62, 46),  "accent": (200, 140, 55)},
+]
+
+def get_biome(level_num: int) -> dict:
+    for b in BIOMES:
+        if b["range"][0] <= level_num <= b["range"][1]:
+            return b
+    return BIOMES[-1]
+
 SCREEN_W = 960
 SCREEN_H = 640
 FPS = 60
