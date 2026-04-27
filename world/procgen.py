@@ -6,6 +6,7 @@ from core.settings import (
     PROCGEN_BASE_W, PROCGEN_BASE_H, PROCGEN_GROWTH_W, PROCGEN_GROWTH_H,
     PROCGEN_MAX_W, PROCGEN_MAX_H, PROCGEN_BASE_ROOMS, PROCGEN_BASE_ZOMBIES,
     PROCGEN_ZOMBIE_GROWTH, PROCGEN_MAX_ZOMBIES, PROCGEN_MAX_ATTEMPTS,
+    get_biome,
 )
 
 
@@ -166,10 +167,55 @@ def _attempt(level_num, idx, tile_w, tile_h, room_count, difficulty=1):
         n = min(random.randint(0, 3), len(barrel_candidates))
         barrel_positions = random.sample(barrel_candidates, n)
 
+    biome = get_biome(idx)
+
+    # Special room (level 2+, 35% chance) — one interior room, clear of entities
+    special_rooms = []
+    if idx >= 2:
+        sr_eligible = [
+            rooms[i] for i in range(1, len(rooms) - 1)
+            if rooms[i][2] >= 4 and rooms[i][3] >= 4
+        ]
+        if sr_eligible and random.random() < 0.35:
+            sr_rx, sr_ry, sr_rw, sr_rh = random.choice(sr_eligible)
+            sr_type = random.choice(["armory", "rest", "shrine"])
+            sr_tiles = {
+                (tx, ty)
+                for ty in range(sr_ry, sr_ry + sr_rh)
+                for tx in range(sr_rx, sr_rx + sr_rw)
+            }
+            special_rooms = [{"type": sr_type, "rect": [sr_rx, sr_ry, sr_rw, sr_rh]}]
+            coin_positions    = [(cx, cy) for cx, cy in coin_positions    if (cx, cy) not in sr_tiles]
+            zombie_positions  = [(zx, zy) for zx, zy in zombie_positions  if (zx, zy) not in sr_tiles]
+            trap_positions    = [(tx, ty) for tx, ty in trap_positions    if (tx, ty) not in sr_tiles]
+            crate_positions   = [(cx, cy) for cx, cy in crate_positions   if (cx, cy) not in sr_tiles]
+
+    # Hazard zones (level 5+, 25% chance, 1–2 zones)
+    hazard_zones = []
+    if idx >= 4 and random.random() < 0.25:
+        hz_types = ["lava", "electric", "gas"]
+        for _ in range(random.randint(1, 2)):
+            hz_eligible = [r for r in rooms if r[2] >= 5 and r[3] >= 5]
+            if not hz_eligible:
+                break
+            rx, ry, rw, rh = random.choice(hz_eligible)
+            zw = random.randint(2, 3)
+            zh = random.randint(2, 3)
+            max_zx = rx + rw - zw - 1
+            max_zy = ry + rh - zh - 1
+            if max_zx <= rx + 1 or max_zy <= ry + 1:
+                continue
+            zx = random.randint(rx + 1, max_zx)
+            zy = random.randint(ry + 1, max_zy)
+            if _mdist((zx + zw // 2, zy + zh // 2), player_start) < 8:
+                continue
+            hazard_zones.append({"type": random.choice(hz_types), "tile": [zx, zy], "w": zw, "h": zh})
+
     return {
         "id": level_num,
         "name": f"Depth {idx + 1}",
-        "background_color": _bg_color(idx),
+        "background_color": list(biome["floor"]),
+        "biome": biome["name"],
         "exit_requires_all_coins": True,
         "player_start": list(player_start),
         "exit": list(exit_pos),
@@ -179,6 +225,8 @@ def _attempt(level_num, idx, tile_w, tile_h, room_count, difficulty=1):
         "traps": [[tx, ty] for tx, ty in trap_positions],
         "crates": [[tx, ty] for tx, ty in crate_positions],
         "barrels": [[tx, ty] for tx, ty in barrel_positions],
+        "special_rooms": special_rooms,
+        "hazard_zones": hazard_zones,
         "instructions": [],
     }
 

@@ -2,7 +2,7 @@ import json
 import math
 import os
 import pygame
-from core.settings import TILE_SIZE
+from core.settings import TILE_SIZE, BIOMES
 from entities.coin import Coin
 from entities.zombie import Zombie
 
@@ -21,20 +21,21 @@ def _tile_shade(tx: int, ty: int) -> int:
     return ((tx * 7 + ty * 13 + (tx ^ ty) * 3) % 15) - 7
 
 
-def _draw_wall(surf: pygame.Surface, wall: pygame.Rect):
-    pygame.draw.rect(surf, _WALL_FACE, wall)
+def _draw_wall(surf: pygame.Surface, wall: pygame.Rect,
+               face=_WALL_FACE, hi=_WALL_HI, shadow=_WALL_SHADOW):
+    pygame.draw.rect(surf, face, wall)
     # Horizontal mortar lines every 8 px
     y = wall.y + 7
     while y < wall.bottom - 1:
-        pygame.draw.line(surf, _WALL_SHADOW, (wall.x + 1, y), (wall.right - 1, y), 1)
+        pygame.draw.line(surf, shadow, (wall.x + 1, y), (wall.right - 1, y), 1)
         y += 8
     # Top-left highlight
-    pygame.draw.line(surf, _WALL_HI, wall.topleft, (wall.right - 1, wall.top), 2)
-    pygame.draw.line(surf, _WALL_HI, wall.topleft, (wall.left, wall.bottom - 1), 2)
+    pygame.draw.line(surf, hi, wall.topleft, (wall.right - 1, wall.top), 2)
+    pygame.draw.line(surf, hi, wall.topleft, (wall.left, wall.bottom - 1), 2)
     # Bottom-right shadow
-    pygame.draw.line(surf, _WALL_SHADOW,
+    pygame.draw.line(surf, shadow,
                      (wall.left, wall.bottom - 1), (wall.right - 1, wall.bottom - 1), 2)
-    pygame.draw.line(surf, _WALL_SHADOW,
+    pygame.draw.line(surf, shadow,
                      (wall.right - 1, wall.top), (wall.right - 1, wall.bottom - 1), 2)
 
 
@@ -60,6 +61,9 @@ class Level:
         self._bg_surf: pygame.Surface | None = None
         self._exit_anim = 0.0
         self.is_boss = False
+        self.biome = "dungeon"
+        self.special_rooms: list[dict] = []
+        self.hazard_zones: list[dict] = []
         self.boss_spawn = None   # pixel coords tuple, set for boss levels
         self._force_open = False
 
@@ -147,6 +151,22 @@ class Level:
             level.instructions.append(
                 (inst["text"], tile[0] * TILE_SIZE, tile[1] * TILE_SIZE))
 
+        level.biome = raw.get("biome", "dungeon")
+        level.special_rooms = [
+            {"type": sr["type"], "rect": pygame.Rect(
+                sr["rect"][0] * TILE_SIZE, sr["rect"][1] * TILE_SIZE,
+                sr["rect"][2] * TILE_SIZE, sr["rect"][3] * TILE_SIZE,
+            )}
+            for sr in raw.get("special_rooms", [])
+        ]
+        level.hazard_zones = [
+            {"type": hz["type"], "rect": pygame.Rect(
+                hz["tile"][0] * TILE_SIZE, hz["tile"][1] * TILE_SIZE,
+                hz["w"] * TILE_SIZE, hz["h"] * TILE_SIZE,
+            )}
+            for hz in raw.get("hazard_zones", [])
+        ]
+
         level.is_boss = raw.get("is_boss_level", False)
         if "boss_spawn" in raw:
             bs = raw["boss_spawn"]
@@ -180,6 +200,12 @@ class Level:
 
     # ── pre-rendered background texture ───────────────────────────────────────
     def _build_bg_surface(self) -> pygame.Surface:
+        biome_data  = next((b for b in BIOMES if b["name"] == self.biome), BIOMES[0])
+        floor_base  = biome_data["floor"]
+        wall_face   = biome_data["wall"]
+        wall_hi     = tuple(min(255, c + 27) for c in wall_face)
+        wall_shadow = tuple(max(0,   c - 27) for c in wall_face)
+
         surf = pygame.Surface((self.pixel_w, self.pixel_h))
         surf.fill(_OUTER_BG)
 
@@ -187,9 +213,9 @@ class Level:
         for ty in range(self.tile_h):
             for tx in range(self.tile_w):
                 v = _tile_shade(tx, ty)
-                r = _FLOOR_BASE[0] + v
-                g = _FLOOR_BASE[1] + v
-                b = _FLOOR_BASE[2] + v + 4
+                r = floor_base[0] + v
+                g = floor_base[1] + v
+                b = floor_base[2] + v + 4
                 tile_r = pygame.Rect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE)
                 pygame.draw.rect(surf, (r, g, b), tile_r)
                 # Subtle grid lines
@@ -197,7 +223,7 @@ class Level:
 
         # Walls on top
         for wall in self.walls:
-            _draw_wall(surf, wall)
+            _draw_wall(surf, wall, face=wall_face, hi=wall_hi, shadow=wall_shadow)
 
         return surf
 
@@ -216,6 +242,14 @@ class Level:
             surface.blit(self._bg_surf, (-offset.x, -offset.y))
         else:
             surface.fill(self.background_color)
+
+        # Hazard zones
+        for hz in self.hazard_zones:
+            self._draw_hazard_zone(surface, offset, hz)
+
+        # Special rooms
+        for sr in self.special_rooms:
+            self._draw_special_room(surface, offset, sr)
 
         # Coins
         for coin in self.coins:
@@ -262,3 +296,41 @@ class Level:
                              (lx - 5, ly - 2, 10, 8), border_radius=1)
             pygame.draw.arc(surface, (100, 130, 100),
                             (lx - 4, ly - 8, 8, 9), 0, math.pi, 2)
+
+    def _draw_hazard_zone(self, surface: pygame.Surface, offset: pygame.Vector2, hz: dict):
+        rect = hz["rect"].move(-int(offset.x), -int(offset.y))
+        if hz["type"] == "lava":
+            color = (200, 80, 20, 100)
+        elif hz["type"] == "electric":
+            color = (60, 120, 255, 80)
+        else:
+            color = (60, 180, 60, 80)
+        zone_surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        zone_surf.fill(color)
+        surface.blit(zone_surf, rect.topleft)
+        pygame.draw.rect(surface, color[:3], rect, 2)
+
+    def _draw_special_room(self, surface: pygame.Surface, offset: pygame.Vector2, sr: dict):
+        biome_data = next((b for b in BIOMES if b["name"] == self.biome), BIOMES[0])
+        accent = biome_data["accent"]
+        rect = sr["rect"].move(-int(offset.x), -int(offset.y))
+        tint = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        tint.fill((*accent, 30))
+        surface.blit(tint, rect.topleft)
+        cx, cy = rect.centerx, rect.centery
+        sr_type = sr["type"]
+        if sr_type == "armory":
+            pygame.draw.line(surface, accent, (cx - 8, cy - 8), (cx + 8, cy + 8), 2)
+            pygame.draw.line(surface, accent, (cx + 8, cy - 8), (cx - 8, cy + 8), 2)
+        elif sr_type == "rest":
+            pygame.draw.circle(surface, accent, (cx - 4, cy - 2), 5)
+            pygame.draw.circle(surface, accent, (cx + 4, cy - 2), 5)
+            pygame.draw.polygon(surface, accent, [(cx - 9, cy + 1), (cx + 9, cy + 1), (cx, cy + 10)])
+        elif sr_type == "shrine":
+            pts = []
+            for i in range(5):
+                oa = math.radians(-90 + i * 72)
+                ia = math.radians(-90 + i * 72 + 36)
+                pts.append((cx + int(math.cos(oa) * 9), cy + int(math.sin(oa) * 9)))
+                pts.append((cx + int(math.cos(ia) * 4), cy + int(math.sin(ia) * 4)))
+            pygame.draw.polygon(surface, accent, pts)
