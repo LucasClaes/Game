@@ -230,15 +230,15 @@ class CodexScreen:
                 by_slot[piece["slot"]].append(piece)
 
         self._inv_rects = []
-        row = 0
+        cur_y = y0 - self._inv_scroll
         for slot in _SLOT_ORDER:
             if not by_slot[slot]:
                 continue
             label_s = self._font.render(_SLOT_LABELS[slot], True, (80, 90, 110))
-            surface.blit(label_s, (inv_x, y0 + row * (card_h + card_gap) - self._inv_scroll))
-            row_y = y0 + row * (card_h + card_gap) + 16 - self._inv_scroll
+            surface.blit(label_s, (inv_x, cur_y))
+            cur_y += 18
             for piece in by_slot[slot]:
-                rect = pygame.Rect(inv_x, row_y, card_w, card_h - 16)
+                rect = pygame.Rect(inv_x, cur_y, card_w, card_h)
                 is_equipped = equipped.get(slot) == piece["id"]
                 bg = (20, 40, 65) if is_equipped else (22, 38, 22)
                 border = (80, 150, 220) if is_equipped else GREEN
@@ -247,18 +247,18 @@ class CodexScreen:
                     pygame.draw.rect(surface, border, rect, 2, border_radius=5)
                     name_s = self._big.render(piece["name"], True,
                                               (80, 180, 240) if is_equipped else WHITE)
-                    surface.blit(name_s, (rect.x + 8, rect.y + 4))
+                    surface.blit(name_s, (rect.x + 8, rect.y + 6))
                     desc_s = self._font.render(piece["desc"], True, (140, 180, 150))
-                    surface.blit(desc_s, (rect.x + 8, rect.y + 22))
+                    surface.blit(desc_s, (rect.x + 8, rect.y + 28))
                     if is_equipped:
                         eq_s = self._font.render("[EQUIPPED]", True, (80, 150, 220))
-                        surface.blit(eq_s, (rect.right - eq_s.get_width() - 8, rect.y + 4))
+                        surface.blit(eq_s, (rect.right - eq_s.get_width() - 8, rect.y + 6))
                     else:
                         click_s = self._font.render("[click to equip]", True, (60, 130, 80))
-                        surface.blit(click_s, (rect.right - click_s.get_width() - 8, rect.y + 4))
+                        surface.blit(click_s, (rect.right - click_s.get_width() - 8, rect.y + 6))
                 self._inv_rects.append((piece["id"], rect))
-                row_y += card_h - 14
-            row += 1
+                cur_y += card_h + card_gap
+            cur_y += 6
 
         if not any(by_slot.values()):
             none_s = self._font.render("No gear in inventory — find crates in runs!", True, (70, 70, 90))

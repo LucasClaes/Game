@@ -62,6 +62,10 @@ class Boss:
         self._charge_timer = 0.0
         self._charging     = False
         self._hit_flash    = 0.0
+        self._stuck_timer  = 0.0
+        self._escape_dir   = pygame.Vector2(0, 0)
+        self._escape_timer = 0.0
+        self._last_pos     = None
 
     @property
     def phase(self) -> int:
@@ -125,18 +129,50 @@ class Boss:
         diff = target - self.pos
         if diff.length() < 2:
             return
-        move = diff.normalize() * speed * dt
+
+        if self._last_pos is None:
+            self._last_pos = pygame.Vector2(self.pos)
+
+        desired = diff.normalize() * speed * dt
+
+        # Blend in escape direction when stuck
+        if self._escape_timer > 0:
+            self._escape_timer -= dt
+            blended = desired + self._escape_dir * speed * dt * 0.9
+            move = blended.normalize() * speed * dt if blended.length() > 0 else desired
+        else:
+            move = desired
+
+        prev_pos = pygame.Vector2(self.pos)
         new_rect = self.rect.move(move.x, move.y)
         if not any(new_rect.colliderect(w) for w in walls):
             self.pos += move
-            return
-        new_rect_x = self.rect.move(move.x, 0)
-        if not any(new_rect_x.colliderect(w) for w in walls):
-            self.pos.x += move.x
-            return
-        new_rect_y = self.rect.move(0, move.y)
-        if not any(new_rect_y.colliderect(w) for w in walls):
-            self.pos.y += move.y
+        else:
+            new_rect_x = self.rect.move(move.x, 0)
+            if not any(new_rect_x.colliderect(w) for w in walls):
+                self.pos.x += move.x
+            else:
+                new_rect_y = self.rect.move(0, move.y)
+                if not any(new_rect_y.colliderect(w) for w in walls):
+                    self.pos.y += move.y
+
+        # Stuck detection: if barely moved, pick a perpendicular escape direction
+        actual_moved = (self.pos - prev_pos).length()
+        if actual_moved < speed * dt * 0.15:
+            self._stuck_timer += dt
+            if self._stuck_timer > 0.4:
+                perp = pygame.Vector2(-diff.y, diff.x)
+                if perp.length() > 0:
+                    perp = perp.normalize()
+                if random.random() < 0.5:
+                    perp = -perp
+                self._escape_dir  = perp
+                self._escape_timer = 0.8
+                self._stuck_timer  = 0.0
+        else:
+            self._stuck_timer = max(0.0, self._stuck_timer - dt * 3)
+
+        self._last_pos = pygame.Vector2(self.pos)
 
     def take_damage(self, amount: int) -> bool:
         if self._inv_timer > 0:

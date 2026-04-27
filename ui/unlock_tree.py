@@ -157,7 +157,7 @@ class UnlockTreeScreen:
 
                 # Bottom row
                 if unlocked:
-                    ok_s = self._font.render("✓ OWNED", True, (55, 190, 55))
+                    ok_s = self._font.render("[OWNED]", True, (55, 190, 55))
                     surface.blit(ok_s, (rect.centerx - ok_s.get_width() // 2,
                                         row_y + node_h - 22))
                 else:
