@@ -15,6 +15,7 @@ BIOMES = [
 ]
 
 def get_biome(level_num: int) -> dict:
+    level_num = max(0, level_num)
     for b in BIOMES:
         if b["range"][0] <= level_num <= b["range"][1]:
             return b

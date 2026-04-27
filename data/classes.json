@@ -22,7 +22,7 @@
       "id": "mage",
       "name": "Mage",
       "desc": "Ranged specialist. Piercing shots.",
-      "starting": {"free_ranged": true, "bullet_pierce": 1},
+      "starting": {"free_ranged": true, "bullet_pierce_bonus": 1},
       "passive": "kill_speed_burst",
       "passive_desc": "3 kills in 3s: +40% speed for 3s",
       "requires_unlock": "class_mage"
