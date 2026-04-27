@@ -15,6 +15,7 @@ _PLAYER_RING    = (160, 210, 255)
 _PLAYER_RADIUS  = 13
 
 _GEAR_DEFS: dict | None = None
+_CLASSES_DEFS: dict | None = None
 
 def _load_gear_defs() -> dict:
     global _GEAR_DEFS
@@ -24,6 +25,15 @@ def _load_gear_defs() -> dict:
             raw = json.load(f)
         _GEAR_DEFS = {g["id"]: g for g in raw["gear"]}
     return _GEAR_DEFS
+
+def _load_class_defs() -> dict:
+    global _CLASSES_DEFS
+    if _CLASSES_DEFS is None:
+        path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "classes.json")
+        with open(path) as f:
+            raw = json.load(f)
+        _CLASSES_DEFS = {c["id"]: c for c in raw["classes"]}
+    return _CLASSES_DEFS
 
 
 class Player:
@@ -78,6 +88,11 @@ class Player:
         self.execute_bonus = 0.0
         self.first_hit_immune_charges = 0
         self.hp_drain_interval = 0.0
+        self.melee_range_mult  = 1.0
+        self.melee_hitbox_mult = 1.0
+        self.bullet_count      = 1
+        self.bullet_spread     = 0
+        self.player_class      = "warrior"
 
         # Apply gear bonuses
         gear_defs = _load_gear_defs()
@@ -112,6 +127,13 @@ class Player:
                 self.first_hit_immune_charges += int(val)
             elif stat == "execute_bonus":
                 self.execute_bonus = val
+            if piece.get("melee_range_mult"):    self.melee_range_mult   = piece["melee_range_mult"]
+            if piece.get("melee_hitbox_mult"):   self.melee_hitbox_mult  = piece["melee_hitbox_mult"]
+            if piece.get("swing_cooldown_mult"): self.swing_cooldown    *= piece["swing_cooldown_mult"]
+            if piece.get("bullet_count"):        self.bullet_count       = piece["bullet_count"]
+            if piece.get("bullet_spread"):       self.bullet_spread      = piece["bullet_spread"]
+            if piece.get("shoot_cooldown_mult"): self.shoot_cooldown    *= piece["shoot_cooldown_mult"]
+            if piece.get("bullet_pierce_bonus"): self.bullet_pierce_count += piece["bullet_pierce_bonus"]
         self.hp = self.max_hp
 
         # Apply run perk stat bonuses
@@ -131,6 +153,20 @@ class Player:
                 self.max_hp = max(1, self.max_hp - 1)
             elif perk_id == "sharpshooter":
                 self.bullet_pierce_count = [1, 2, 3][min(lv - 1, 2)]
+        self.hp = self.max_hp
+
+        # Apply class starting bonuses
+        cls_defs = _load_class_defs()
+        run_class = pd.get("run_class", "warrior")
+        cls_data = cls_defs.get(run_class, cls_defs.get("warrior", {}))
+        start = cls_data.get("starting", {})
+        if start.get("free_dash"):           self.dash_unlocked = True
+        if start.get("free_ranged"):         self.has_ranged = True
+        if start.get("bonus_hp"):            self.max_hp += start["bonus_hp"]
+        if start.get("bonus_speed"):         self.speed *= 1 + start["bonus_speed"]
+        if start.get("bonus_armor"):         self.damage_reduction = min(self.damage_reduction + start["bonus_armor"], 0.60)
+        if start.get("bullet_pierce_bonus"): self.bullet_pierce_count += start["bullet_pierce_bonus"]
+        self.player_class = run_class
         self.hp = self.max_hp
 
         self.swing_timer = 0.0
@@ -175,9 +211,17 @@ class Player:
     def _try_shoot(self, bullets: list):
         if not self.has_ranged or self.shoot_timer > 0:
             return
-        direction = pygame.Vector2(1, 0).rotate(self.facing)
-        spawn = self.pos + direction * (_PLAYER_RADIUS + 6)
-        bullets.append(Bullet(spawn, direction * BULLET_SPEED, self.bullet_damage, pierce=self.bullet_pierce_count))
+        if self.bullet_count == 1:
+            angles = [self.facing]
+        else:
+            angles = [
+                self.facing - self.bullet_spread / 2 + i * self.bullet_spread / (self.bullet_count - 1)
+                for i in range(self.bullet_count)
+            ]
+        for angle in angles:
+            direction = pygame.Vector2(1, 0).rotate(angle)
+            spawn = self.pos + direction * (_PLAYER_RADIUS + 6)
+            bullets.append(Bullet(spawn, direction * BULLET_SPEED, self.bullet_damage, pierce=self.bullet_pierce_count))
         self.shoot_timer = self.shoot_cooldown
 
     def use_bomb(self) -> bool:
@@ -251,11 +295,12 @@ class Player:
         self.pos.y = self.rect.centery
 
     def get_melee_hitbox(self) -> pygame.Rect:
-        offset = pygame.Vector2(MELEE_RANGE, 0).rotate(self.facing)
+        range_px = MELEE_RANGE * self.melee_range_mult
+        size_px  = int(MELEE_HITBOX_SIZE * self.melee_hitbox_mult)
+        offset = pygame.Vector2(range_px, 0).rotate(self.facing)
         cx = self.pos.x + offset.x
         cy = self.pos.y + offset.y
-        half = MELEE_HITBOX_SIZE // 2
-        return pygame.Rect(cx - half, cy - half, MELEE_HITBOX_SIZE, MELEE_HITBOX_SIZE)
+        return pygame.Rect(cx - size_px // 2, cy - size_px // 2, size_px, size_px)
 
     def take_damage(self, amount: int) -> bool:
         if self.invincible_timer > 0:
