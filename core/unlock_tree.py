@@ -11,7 +11,7 @@ def get_nodes() -> list:
         try:
             with open(_PATH) as f:
                 _CACHE = json.load(f)["nodes"]
-        except Exception:
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
             _CACHE = []
     return _CACHE
 
