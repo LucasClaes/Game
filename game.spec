@@ -12,6 +12,8 @@ a = Analysis(
         ('data/perks.json',          'data'),
         ('data/achievements.json',   'data'),
         ('data/challenges.json',     'data'),
+        ('data/classes.json',        'data'),
+        ('data/unlock_tree.json',    'data'),
     ],
     hiddenimports=['tkinter', 'tkinter.messagebox', 'tkinter.ttk'],
     hookspath=[],

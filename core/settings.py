@@ -1,4 +1,4 @@
-VERSION = "v1.0.0"
+VERSION = "v1.1.1"
 
 DIFFICULTIES = [
     {"name": "Easy",      "hp": 0.70, "speed": 0.80, "damage": 0.75, "coins": 0.85, "crate_chance": 0.00, "spawn_count_mult": 0.85},
